@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.vite/
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude settings (keep .claude/CLAUDE.md but not settings)
+.claude/settings.local.json
