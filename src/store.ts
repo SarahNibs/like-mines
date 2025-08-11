@@ -45,7 +45,7 @@ class GameStore {
   }
 
   // Actions
-  revealTileAt(x: number, y: number): boolean {
+  revealTileAt(x: number, y: number, bypassRewind: boolean = false): boolean {
     if (this.state.gameStatus !== 'playing' || this.state.currentTurn !== 'player') {
       return false
     }
@@ -55,8 +55,8 @@ class GameStore {
       return false
     }
     
-    // Check for Rewind protection on dangerous tiles
-    if (this.checkRewindProtection(tile)) {
+    // Check for Rewind protection on dangerous tiles (unless bypassed with SHIFT)
+    if (!bypassRewind && this.checkRewindProtection(tile)) {
       return false // Player chose not to reveal
     }
     
@@ -64,6 +64,11 @@ class GameStore {
     if (success) {
       const newBoardStatus = checkBoardStatus(this.state.board)
       const isPlayerTile = tile.owner === 'player'
+      
+      // Award loot bonus for revealing opponent tiles
+      if (tile.owner === 'opponent') {
+        this.state.run.gold += this.state.run.loot
+      }
       
       // Handle tile content after checking board status
       this.handleTileContent(tile)
@@ -203,7 +208,11 @@ class GameStore {
   private handleTileContent(tile: any): void {
     const run = this.state.run
     
-    if (tile.content === TileContent.Item && tile.itemData) {
+    if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
+      // Apply upgrade immediately when revealed
+      this.applyUpgrade(tile.upgradeData.id)
+      console.log(`Found ${tile.upgradeData.name} upgrade!`)
+    } else if (tile.content === TileContent.Item && tile.itemData) {
       const item = tile.itemData
       
       if (item.immediate) {
@@ -233,7 +242,16 @@ class GameStore {
       const monster = tile.monsterData
       const damage = fightMonster(monster, run.attack, run.defense)
       run.hp = run.hp - damage
-      console.log(`Fought ${monster.name}! Took ${damage} damage. HP: ${run.hp}/${run.maxHp}`)
+      
+      // Award loot bonus for fighting monsters
+      run.gold += run.loot
+      
+      // RICH upgrade: add gold items to adjacent tiles when defeating monsters
+      if (run.upgrades.includes('rich')) {
+        this.applyRichUpgrade(tile.x, tile.y)
+      }
+      
+      console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${run.loot} gold. HP: ${run.hp}/${run.maxHp}`)
       
       // Check for game over
       if (run.hp <= 0) {
@@ -505,23 +523,38 @@ class GameStore {
 
   // Shop functionality
   private openShop(): void {
-    // Generate 4 random items with costs 2, 3, 4, 5 gold
+    // Generate 4 random items + 1 random upgrade with costs 2, 3, 4, 5, 7 gold
     import('./items').then(({ SHOP_ITEMS }) => {
-      const costs = [2, 3, 4, 5]
-      const shopItems = []
-      
-      for (let i = 0; i < 4; i++) {
-        const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
-        shopItems.push({
-          item: randomItem,
-          cost: costs[i]
+      import('./upgrades').then(({ getAvailableUpgrades }) => {
+        const costs = [2, 3, 4, 5, 7] // 7g for upgrade
+        const shopItems = []
+        
+        // Add 4 random items
+        for (let i = 0; i < 4; i++) {
+          const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
+          shopItems.push({
+            item: randomItem,
+            cost: costs[i],
+            isUpgrade: false
+          })
+        }
+        
+        // Add 1 random upgrade
+        const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
+        if (availableUpgrades.length > 0) {
+          const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
+          shopItems.push({
+            item: randomUpgrade,
+            cost: costs[4], // 7 gold
+            isUpgrade: true
+          })
+        }
+        
+        console.log('Shop opened with items:', shopItems)
+        this.setState({
+          shopOpen: true,
+          shopItems
         })
-      }
-      
-      console.log('Shop opened with items:', shopItems)
-      this.setState({
-        shopOpen: true,
-        shopItems
       })
     })
   }
@@ -544,8 +577,12 @@ class GameStore {
     // Deduct gold
     run.gold -= shopItem.cost
     
-    // Handle immediate vs inventory items
-    if (shopItem.item.immediate) {
+    // Handle upgrades vs items
+    if (shopItem.isUpgrade) {
+      // Apply upgrade immediately
+      this.applyUpgrade(shopItem.item.id)
+      console.log(`Bought and applied ${shopItem.item.name} upgrade for ${shopItem.cost} gold`)
+    } else if (shopItem.item.immediate) {
       // Use immediate item right away
       const message = applyItemEffect(run, shopItem.item)
       console.log(`Bought and used ${shopItem.item.name} for ${shopItem.cost} gold: ${message}`)
@@ -575,6 +612,71 @@ class GameStore {
     this.setState({
       shopOpen: false,
       shopItems: []
+    })
+  }
+
+  // Apply upgrade effects
+  applyUpgrade(upgradeId: string): void {
+    const run = { ...this.state.run }
+    
+    // For repeatable upgrades, add multiple instances; for non-repeatable, only add once
+    const isRepeatable = ['attack', 'defense', 'healthy', 'income'].includes(upgradeId)
+    
+    if (isRepeatable || !run.upgrades.includes(upgradeId)) {
+      run.upgrades = [...run.upgrades, upgradeId]
+    } else {
+      // Non-repeatable upgrade already owned, don't add again
+      console.log(`Already have ${upgradeId} upgrade (non-repeatable)`)
+      return
+    }
+    
+    // Apply upgrade effects
+    switch (upgradeId) {
+      case 'attack':
+        run.attack += 2
+        break
+      case 'defense':
+        run.defense += 1
+        break
+      case 'healthy':
+        run.maxHp += 25
+        break
+      case 'income':
+        run.loot += 1
+        break
+      // QUICK, RICH, and WISDOM are passive and don't need immediate effects
+      case 'quick':
+      case 'rich':
+      case 'wisdom':
+        // These are handled at board generation / gameplay time
+        break
+    }
+    
+    this.setState({ run })
+  }
+
+  // Apply RICH upgrade effect: add gold items to adjacent tiles
+  private applyRichUpgrade(x: number, y: number): void {
+    const board = this.state.board
+    
+    // Import the actual GOLD_COIN item
+    import('./items').then(({ GOLD_COIN }) => {
+      // Check all 8 adjacent positions
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue // Skip center tile
+          
+          const adjX = x + dx
+          const adjY = y + dy
+          const adjTile = getTileAt(board, adjX, adjY)
+          
+          // Add gold to unrevealed tiles that don't already have content icons
+          if (adjTile && !adjTile.revealed && adjTile.content === TileContent.Empty) {
+            adjTile.content = TileContent.Item
+            adjTile.itemData = GOLD_COIN
+          }
+        }
+      }
     })
   }
 
@@ -638,6 +740,11 @@ class GameStore {
     if (success) {
       const newBoardStatus = checkBoardStatus(this.state.board)
       const isPlayerTile = tile.owner === 'player'
+      
+      // Award loot bonus for revealing opponent tiles
+      if (tile.owner === 'opponent') {
+        this.state.run.gold += this.state.run.loot
+      }
       
       // Handle tile content after checking board status
       this.handleTileContent(tile)

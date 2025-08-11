@@ -1,6 +1,7 @@
 import * as ROT from 'rot-js'
 import { Board, Tile, TileOwner, TileContent } from './types'
 import { ALL_ITEMS, SHOP, createMonster } from './items'
+import { getAvailableUpgrades } from './upgrades'
 
 export interface BoardConfig {
   width: number
@@ -11,10 +12,19 @@ export interface BoardConfig {
 }
 
 // Generate content for a tile based on its owner and level
-function generateTileContent(owner: TileOwner, level: number, rng: ROT.RNG, playerGold: number = 0, forceShop: boolean = false): { content: TileContent, itemData?: any, monsterData?: any } {
+function generateTileContent(owner: TileOwner, level: number, rng: ROT.RNG, playerGold: number = 0, forceShop: boolean = false, forceUpgrade: boolean = false, ownedUpgrades: string[] = []): { content: TileContent, itemData?: any, monsterData?: any, upgradeData?: any } {
   // Force shop if requested (for guaranteed shop placement)
   if (forceShop && owner === TileOwner.Neutral) {
     return { content: TileContent.Item, itemData: SHOP }
+  }
+  
+  // Force upgrade if requested (upgrades never appear on player tiles)
+  if (forceUpgrade && owner !== TileOwner.Player) {
+    const availableUpgrades = getAvailableUpgrades(ownedUpgrades)
+    if (availableUpgrades.length > 0) {
+      const randomUpgrade = availableUpgrades[Math.floor(rng.getUniform() * availableUpgrades.length)]
+      return { content: TileContent.PermanentUpgrade, upgradeData: randomUpgrade }
+    }
   }
   // Balanced content frequency
   const roll = rng.getUniform()
@@ -93,7 +103,7 @@ function generateTileContent(owner: TileOwner, level: number, rng: ROT.RNG, play
   }
 }
 
-export function generateBoard(config: BoardConfig, playerGold: number = 0): Board {
+export function generateBoard(config: BoardConfig, playerGold: number = 0, ownedUpgrades: string[] = []): Board {
   const { width, height, playerTileRatio, opponentTileRatio, seed } = config
   
   // Extract the actual level from the seed (seed = level * 1000 + random)
@@ -155,6 +165,7 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0): Boar
   let actualOpponentTiles = 0
   let index = 0
   let shopPlaced = false // Track if shop has been placed for level 6
+  let upgradePlaced = false // Track if upgrade has been placed
   
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -164,8 +175,11 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0): Boar
       // Check if we need to force a shop on level 6
       const shouldForceShop = actualLevel === 6 && !shopPlaced && tileType === TileOwner.Neutral
       
+      // Check if we need to force an upgrade (exactly one per board, never on player tiles)
+      const shouldForceUpgrade = !upgradePlaced && tileType !== TileOwner.Player && rng.getUniform() < 0.1 // 10% chance per non-player tile
+      
       // Generate content for this tile based on level
-      const contentData = generateTileContent(tileType, actualLevel, rng, playerGold, shouldForceShop)
+      const contentData = generateTileContent(tileType, actualLevel, rng, playerGold, shouldForceShop, shouldForceUpgrade, ownedUpgrades)
       tiles[y][x].content = contentData.content
       if (contentData.itemData) {
         tiles[y][x].itemData = contentData.itemData
@@ -177,11 +191,40 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0): Boar
       if (contentData.monsterData) {
         tiles[y][x].monsterData = contentData.monsterData
       }
+      if (contentData.upgradeData) {
+        tiles[y][x].upgradeData = contentData.upgradeData
+        upgradePlaced = true
+      }
       
       if (tileType === TileOwner.Player) {
         actualPlayerTiles++
       } else if (tileType === TileOwner.Opponent) {
         actualOpponentTiles++
+      }
+    }
+  }
+  
+  // Fallback: if no upgrade was placed, force one on a random non-player tile
+  if (!upgradePlaced) {
+    const nonPlayerTiles = []
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y][x].owner !== TileOwner.Player) {
+          nonPlayerTiles.push({x, y})
+        }
+      }
+    }
+    
+    if (nonPlayerTiles.length > 0) {
+      const randomTile = nonPlayerTiles[Math.floor(rng.getUniform() * nonPlayerTiles.length)]
+      const availableUpgrades = getAvailableUpgrades(ownedUpgrades)
+      if (availableUpgrades.length > 0) {
+        const randomUpgrade = availableUpgrades[Math.floor(rng.getUniform() * availableUpgrades.length)]
+        tiles[randomTile.y][randomTile.x].content = TileContent.PermanentUpgrade
+        tiles[randomTile.y][randomTile.x].upgradeData = randomUpgrade
+        // Clear any existing item/monster data
+        delete tiles[randomTile.y][randomTile.x].itemData
+        delete tiles[randomTile.y][randomTile.x].monsterData
       }
     }
   }

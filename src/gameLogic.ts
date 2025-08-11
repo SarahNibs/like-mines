@@ -27,9 +27,9 @@ export function countAdjacentTiles(board: Board, x: number, y: number, ownerType
 }
 
 // Create board for current level
-export function createBoardForLevel(level: number, playerGold: number = 0): Board {
+export function createBoardForLevel(level: number, playerGold: number = 0, ownedUpgrades: string[] = []): Board {
   const config = getBoardConfigForLevel(level)
-  return generateBoard(config, playerGold)
+  return generateBoard(config, playerGold, ownedUpgrades)
 }
 
 // Reveal a tile and update board state
@@ -74,14 +74,16 @@ export function createInitialRunState(): RunState {
     gold: 0,
     attack: 5, // Starting attack power
     defense: 0, // Starting defense
-    inventory: [null, null, null, null, null] // 5 empty slots
+    loot: 1, // Starting loot bonus per opponent tile/monster
+    inventory: [null, null, null, null, null], // 5 empty slots
+    upgrades: [] // No upgrades initially
   }
 }
 
 // Create initial game state
 export function createInitialGameState(): GameState {
   const run = createInitialRunState()
-  const board = createBoardForLevel(run.currentLevel, run.gold)
+  const board = createBoardForLevel(run.currentLevel, run.gold, run.upgrades)
   const initialClue = generateClue(board)
   const boardStatus = checkBoardStatus(board)
   
@@ -111,7 +113,64 @@ export function progressToNextLevel(currentState: GameState): GameState {
     }
   }
   
-  const newBoard = createBoardForLevel(newLevel, currentState.run.gold)
+  const newBoard = createBoardForLevel(newLevel, currentState.run.gold, currentState.run.upgrades)
+  
+  // Apply QUICK upgrade: reveal random player tile
+  if (currentState.run.upgrades.includes('quick')) {
+    const playerTiles = []
+    for (let y = 0; y < newBoard.height; y++) {
+      for (let x = 0; x < newBoard.width; x++) {
+        const tile = newBoard.tiles[y][x]
+        if (tile.owner === 'player' && !tile.revealed) {
+          playerTiles.push({x, y})
+        }
+      }
+    }
+    
+    if (playerTiles.length > 0) {
+      const randomTile = playerTiles[Math.floor(Math.random() * playerTiles.length)]
+      revealTile(newBoard, randomTile.x, randomTile.y, 'player')
+    }
+  }
+  
+  // Apply WISDOM upgrade: add detector scan to random tile
+  if (currentState.run.upgrades.includes('wisdom')) {
+    const allTiles = []
+    for (let y = 0; y < newBoard.height; y++) {
+      for (let x = 0; x < newBoard.width; x++) {
+        allTiles.push({x, y})
+      }
+    }
+    
+    if (allTiles.length > 0) {
+      const randomTile = allTiles[Math.floor(Math.random() * allTiles.length)]
+      const tile = newBoard.tiles[randomTile.y][randomTile.x]
+      
+      // Apply detector scan (same logic as detector item)
+      let playerAdjacent = 0
+      let opponentAdjacent = 0
+      let neutralAdjacent = 0
+      
+      // Check all 9 positions in 3x3 area (including center)
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const adjTile = getTileAt(newBoard, randomTile.x + dx, randomTile.y + dy)
+          if (adjTile) {
+            if (adjTile.owner === 'player') playerAdjacent++
+            else if (adjTile.owner === 'opponent') opponentAdjacent++
+            else if (adjTile.owner === 'neutral') neutralAdjacent++
+          }
+        }
+      }
+      
+      tile.detectorScan = {
+        playerAdjacent,
+        opponentAdjacent,
+        neutralAdjacent
+      }
+    }
+  }
+  
   const initialClue = generateClue(newBoard)
   
   return {

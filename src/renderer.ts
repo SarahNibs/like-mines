@@ -332,6 +332,8 @@ export class GameRenderer {
           icon = tile.itemData.icon
         } else if (tile.content === TileContent.Monster && tile.monsterData) {
           icon = tile.monsterData.icon
+        } else if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
+          icon = tile.upgradeData.icon
         }
         
         if (icon) {

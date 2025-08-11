@@ -1,6 +1,7 @@
 import './style.css'
 import { gameStore } from './store'
 import { GameRenderer } from './renderer'
+import { ALL_UPGRADES } from './upgrades'
 
 console.log('Roguelike Minesweeper - Starting up...')
 
@@ -22,6 +23,7 @@ const handAEl = document.getElementById('hand-a')!
 const handBEl = document.getElementById('hand-b')!
 const endTurnBtn = document.getElementById('end-turn')!
 const inventoryEl = document.getElementById('inventory')!
+const upgradesEl = document.getElementById('upgrades')!
 const boardOverlay = document.getElementById('board-overlay')!
 const overlayMessage = document.getElementById('overlay-message')!
 const rewindWidget = document.getElementById('rewind-widget')!
@@ -38,6 +40,8 @@ const discardCancelBtn = document.getElementById('discard-cancel')!
 
 // Detector hover tooltip element
 let detectorTooltip: HTMLElement | null = null
+// General item/upgrade tooltip element
+let itemTooltip: HTMLElement | null = null
 
 // Create detector tooltip if it doesn't exist
 function createDetectorTooltip(): HTMLElement {
@@ -72,6 +76,43 @@ function showDetectorTooltip(x: number, y: number, playerCount: number, opponent
 function hideDetectorTooltip(): void {
   if (detectorTooltip) {
     detectorTooltip.style.display = 'none'
+  }
+}
+
+// Create item tooltip if it doesn't exist
+function createItemTooltip(): HTMLElement {
+  if (!itemTooltip) {
+    itemTooltip = document.createElement('div')
+    itemTooltip.style.position = 'absolute'
+    itemTooltip.style.background = 'rgba(0, 0, 0, 0.9)'
+    itemTooltip.style.color = '#fff'
+    itemTooltip.style.padding = '8px'
+    itemTooltip.style.borderRadius = '4px'
+    itemTooltip.style.fontSize = '12px'
+    itemTooltip.style.fontFamily = 'Courier New, monospace'
+    itemTooltip.style.pointerEvents = 'none'
+    itemTooltip.style.zIndex = '1000'
+    itemTooltip.style.display = 'none'
+    itemTooltip.style.border = '1px solid #666'
+    itemTooltip.style.maxWidth = '200px'
+    document.body.appendChild(itemTooltip)
+  }
+  return itemTooltip
+}
+
+// Show item tooltip
+function showItemTooltip(x: number, y: number, title: string, description: string): void {
+  const tooltip = createItemTooltip()
+  tooltip.innerHTML = `<strong>${title}</strong><br/>${description}`
+  tooltip.style.left = `${x + 10}px`
+  tooltip.style.top = `${y - 10}px`
+  tooltip.style.display = 'block'
+}
+
+// Hide item tooltip
+function hideItemTooltip(): void {
+  if (itemTooltip) {
+    itemTooltip.style.display = 'none'
   }
 }
 
@@ -149,6 +190,9 @@ function updateUI() {
   
   // Update inventory
   updateInventory(state)
+  
+  // Update upgrades
+  updateUpgrades(state)
   
   // Update rewind widget
   updateRewindWidget(state)
@@ -237,6 +281,59 @@ function updateInventory(state: any) {
   }
 }
 
+// Track the last upgrade state to prevent unnecessary updates
+let lastUpgradeState: string[] = []
+
+// Update upgrades display
+function updateUpgrades(state: any) {
+  // Add null checks for DOM elements
+  if (!upgradesEl) {
+    console.error('Upgrades element not found')
+    return
+  }
+  
+  // Check if upgrades have actually changed to prevent flickering
+  const currentUpgrades = state.run.upgrades || []
+  const upgradesChanged = JSON.stringify(currentUpgrades) !== JSON.stringify(lastUpgradeState)
+  
+  if (!upgradesChanged) {
+    return // No changes, don't update
+  }
+  
+  lastUpgradeState = [...currentUpgrades]
+  upgradesEl.innerHTML = ''
+  
+  // Create upgrade icons synchronously - smaller and more compact for Run Progress box
+  currentUpgrades.forEach((upgradeId: string) => {
+    const upgrade = ALL_UPGRADES.find(u => u.id === upgradeId)
+    if (upgrade) {
+      const icon = document.createElement('span')
+      icon.textContent = upgrade.icon
+      icon.title = `${upgrade.name}: ${upgrade.description}`
+      icon.style.fontSize = '16px'
+      icon.style.padding = '2px'
+      icon.style.margin = '1px'
+      icon.style.cursor = 'default'
+      icon.style.display = 'inline-block'
+      icon.style.border = '1px solid #666'
+      icon.style.borderRadius = '3px'
+      icon.style.background = '#444'
+      
+      upgradesEl.appendChild(icon)
+    }
+  })
+  
+  // If no upgrades, show a subtle message
+  if (currentUpgrades.length === 0) {
+    const message = document.createElement('span')
+    message.textContent = 'None'
+    message.style.fontSize = '11px'
+    message.style.color = '#888'
+    message.style.fontStyle = 'italic'
+    upgradesEl.appendChild(message)
+  }
+}
+
 // Update rewind widget display
 function updateRewindWidget(state: any) {
   if (state.pendingRewind) {
@@ -272,6 +369,7 @@ function updateShopWidget(state: any) {
       const itemIcon = document.createElement('span')
       itemIcon.textContent = shopItem.item.icon
       itemIcon.style.fontSize = '16px'
+      itemIcon.title = `${shopItem.item.name}: ${shopItem.item.description}`
       
       const itemName = document.createElement('span')
       itemName.textContent = shopItem.item.name
@@ -623,6 +721,7 @@ canvas.addEventListener('click', (event) => {
   const rect = canvas.getBoundingClientRect()
   const mouseX = event.clientX - rect.left
   const mouseY = event.clientY - rect.top
+  const shiftKey = event.shiftKey
   
   const state = gameStore.getState()
   const tilePos = renderer.getTileFromCoordinates(state.board, mouseX, mouseY)
@@ -647,9 +746,9 @@ canvas.addEventListener('click', (event) => {
       return // Don't do normal tile reveal
     }
     
-    console.log('Attempting to reveal tile at', tilePos.x, tilePos.y)
+    console.log('Attempting to reveal tile at', tilePos.x, tilePos.y, shiftKey ? '(SHIFT bypass)' : '')
     const wasPlayerTurn = state.currentTurn === 'player'
-    const success = gameStore.revealTileAt(tilePos.x, tilePos.y)
+    const success = gameStore.revealTileAt(tilePos.x, tilePos.y, shiftKey)
     console.log('Reveal success:', success)
     
     // Only clear highlights if turn actually changes
@@ -701,6 +800,26 @@ canvas.addEventListener('contextmenu', (event) => {
   }
 })
 
+// Check if mouse is over a tile with item/upgrade/monster content (specifically over the icon area)
+function isMouseOverTileContent(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
+  if (!tile.itemData && !tile.upgradeData && !tile.monsterData) return false
+  
+  // Calculate tile position
+  const x = padding + tile.x * (tileSize + gap)
+  const y = padding + tile.y * (tileSize + gap)
+  
+  // Icon is positioned at x + tileSize * 0.25, y + tileSize * 0.25 with font size tileSize * 0.4
+  // Create a hover area around the icon position (roughly icon size)
+  const iconX = x + tileSize * 0.25
+  const iconY = y + tileSize * 0.25
+  const iconSize = tileSize * 0.4
+  const iconHalfSize = iconSize * 0.5
+  
+  // Check if mouse is within the icon area (centered around icon position)
+  return mouseX >= iconX - iconHalfSize && mouseX <= iconX + iconHalfSize && 
+         mouseY >= iconY - iconHalfSize && mouseY <= iconY + iconHalfSize
+}
+
 // Check if mouse is over detector scan area for a tile
 function isMouseOverDetectorScan(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
   if (!tile.detectorScan) return false
@@ -735,8 +854,10 @@ canvas.addEventListener('mousemove', (event) => {
   const state = gameStore.getState()
   const tilePos = renderer.getTileFromCoordinates(state.board, mouseX, mouseY)
   
-  // Check for detector scan hover first
+  // Check for detector scan hover and item/upgrade content hover
   let detectorHover = false
+  let itemHover = false
+  
   if (tilePos) {
     const tile = state.board.tiles[tilePos.y][tilePos.x]
     // Get actual renderer properties
@@ -744,16 +865,37 @@ canvas.addEventListener('mousemove', (event) => {
     const padding = renderer.getPadding()
     const gap = renderer.getGap()
     
+    // Check detector scan first (takes priority)
     if (isMouseOverDetectorScan(mouseX, mouseY, tile, tileSize, padding, gap)) {
       const clientX = event.clientX
       const clientY = event.clientY
       showDetectorTooltip(clientX, clientY, tile.detectorScan.playerAdjacent, tile.detectorScan.opponentAdjacent, tile.detectorScan.neutralAdjacent)
       detectorHover = true
+    } else if (isMouseOverTileContent(mouseX, mouseY, tile, tileSize, padding, gap)) {
+      const clientX = event.clientX
+      const clientY = event.clientY
+      
+      if (tile.itemData) {
+        showItemTooltip(clientX, clientY, tile.itemData.name, tile.itemData.description)
+        itemHover = true
+      } else if (tile.upgradeData) {
+        showItemTooltip(clientX, clientY, tile.upgradeData.name, tile.upgradeData.description)
+        itemHover = true
+      } else if (tile.monsterData) {
+        const monster = tile.monsterData
+        const description = `Attack: ${monster.attack} | Defense: ${monster.defense} | HP: ${monster.hp}`
+        showItemTooltip(clientX, clientY, monster.name, description)
+        itemHover = true
+      }
     }
   }
   
   if (!detectorHover) {
     hideDetectorTooltip()
+  }
+  
+  if (!itemHover) {
+    hideItemTooltip()
   }
   
   if (tilePos) {
@@ -766,6 +908,7 @@ canvas.addEventListener('mousemove', (event) => {
 canvas.addEventListener('mouseleave', () => {
   clearClueTileHighlights()
   hideDetectorTooltip()
+  hideItemTooltip()
 })
 
 // Function to highlight clue tiles that correspond to a board tile
@@ -824,6 +967,7 @@ document.getElementById('next-level')!.addEventListener('click', () => {
 
 document.getElementById('reset-game')!.addEventListener('click', () => {
   console.log('Resetting run...')
+  lastUpgradeState = [] // Clear upgrade state cache
   gameStore.resetGame()
 })
 
@@ -836,6 +980,7 @@ endTurnBtn.addEventListener('click', () => {
 // Start New Run button handler
 document.getElementById('start-new-run')!.addEventListener('click', () => {
   console.log('Starting new run...')
+  lastUpgradeState = [] // Clear upgrade state cache
   gameStore.resetGame()
 })
 

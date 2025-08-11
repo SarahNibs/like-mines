@@ -72,9 +72,9 @@ export const ALL_ITEMS: ItemData[] = [
   CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
 ]
 
-// Items available for purchase in shops (excludes shop itself and gold)
+// Items available for purchase in shops (excludes shop itself, gold, and negative items like bear traps)
 export const SHOP_ITEMS: ItemData[] = [
-  BEAR_TRAP, FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
+  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
 ]
 
 // Sample monsters - no scaling, fixed stats

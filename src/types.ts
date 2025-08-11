@@ -34,6 +34,14 @@ export interface MonsterData {
   hp: number
 }
 
+export interface UpgradeData {
+  id: string
+  name: string
+  description: string
+  icon: string
+  repeatable: boolean
+}
+
 export interface PlayerStats {
   gold: number
   hp: number
@@ -54,6 +62,7 @@ export interface Tile {
   revealedBy?: TileOwner // Who revealed this tile (determines adjacency display)
   itemData?: ItemData // Present if content is Item
   monsterData?: MonsterData // Present if content is Monster
+  upgradeData?: UpgradeData // Present if content is PermanentUpgrade
   detectorScan?: {
     playerAdjacent: number
     opponentAdjacent: number
@@ -80,7 +89,9 @@ export interface RunState {
   gold: number
   attack: number
   defense: number
+  loot: number // Gold gained per opponent tile revealed or monster fought
   inventory: (ItemData | null)[] // 5 slots, null = empty
+  upgrades: string[] // Array of upgrade IDs that have been acquired
 }
 
 export interface GameState {
@@ -93,7 +104,7 @@ export interface GameState {
   transmuteMode: boolean // Whether player is in transmute tile selection mode
   detectorMode: boolean // Whether player is in detector tile selection mode
   shopOpen: boolean // Whether the shop widget is currently open
-  shopItems: Array<{item: ItemData, cost: number}> // Current shop inventory
+  shopItems: Array<{item: ItemData | UpgradeData, cost: number, isUpgrade?: boolean}> // Current shop inventory
   pendingRewind?: {
     tile: Tile
     rewindIndex: number
