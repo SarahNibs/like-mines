@@ -28,6 +28,9 @@ const rewindWidget = document.getElementById('rewind-widget')!
 const rewindMessage = document.getElementById('rewind-message')!
 const rewindProceedBtn = document.getElementById('rewind-proceed')!
 const rewindCancelBtn = document.getElementById('rewind-cancel')!
+const shopWidget = document.getElementById('shop-widget')!
+const shopItemsEl = document.getElementById('shop-items')!
+const shopCloseBtn = document.getElementById('shop-close')!
 
 // Detector hover tooltip element
 let detectorTooltip: HTMLElement | null = null
@@ -146,6 +149,9 @@ function updateUI() {
   // Update rewind widget
   updateRewindWidget(state)
   
+  // Update shop widget
+  updateShopWidget(state)
+  
   // Update clues only when necessary
   let annotatedCount = 0
   for (let y = 0; y < state.board.height; y++) {
@@ -210,30 +216,19 @@ function updateInventory(state: any) {
     
     if (item) {
       slot.textContent = item.icon
-      slot.title = `${item.name}: ${item.description}`
+      slot.title = `${item.name}: ${item.description}\nRight-click to discard`
       slot.addEventListener('click', () => gameStore.useInventoryItem(i))
+      slot.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        if (confirm(`Discard ${item.name}?`)) {
+          gameStore.discardInventoryItem(i)
+        }
+      })
     } else {
       slot.classList.add('empty')
     }
     
     inventoryEl.appendChild(slot)
-  }
-  
-  // Show overflow if present
-  const overflowEl = document.getElementById('overflow-item')
-  const overflowSlot = document.getElementById('overflow-slot')
-  
-  if (overflowEl && overflowSlot) {
-    if (state.run.overflowItem) {
-      overflowEl.style.display = 'block'
-      overflowSlot.textContent = state.run.overflowItem.icon
-      overflowSlot.title = `${state.run.overflowItem.name}: ${state.run.overflowItem.description}`
-      // Add glow effect to inventory
-      inventoryEl.style.boxShadow = '0 0 10px #ff6b6b'
-    } else {
-      overflowEl.style.display = 'none'
-      inventoryEl.style.boxShadow = 'none'
-    }
   }
 }
 
@@ -244,6 +239,69 @@ function updateRewindWidget(state: any) {
     rewindMessage.textContent = `This is a ${state.pendingRewind.description}! Use Rewind to prevent revealing it, or proceed anyway.`
   } else {
     rewindWidget.style.display = 'none'
+  }
+}
+
+// Update shop widget display
+function updateShopWidget(state: any) {
+  if (state.shopOpen && state.shopItems.length > 0) {
+    shopWidget.style.display = 'block'
+    shopItemsEl.innerHTML = ''
+    
+    // Create shop item buttons
+    state.shopItems.forEach((shopItem: any, index: number) => {
+      const itemEl = document.createElement('div')
+      itemEl.style.display = 'flex'
+      itemEl.style.alignItems = 'center'
+      itemEl.style.justifyContent = 'space-between'
+      itemEl.style.padding = '4px'
+      itemEl.style.border = '1px solid #666'
+      itemEl.style.borderRadius = '2px'
+      itemEl.style.background = '#444'
+      
+      const itemInfo = document.createElement('div')
+      itemInfo.style.display = 'flex'
+      itemInfo.style.alignItems = 'center'
+      itemInfo.style.gap = '6px'
+      
+      const itemIcon = document.createElement('span')
+      itemIcon.textContent = shopItem.item.icon
+      itemIcon.style.fontSize = '16px'
+      
+      const itemName = document.createElement('span')
+      itemName.textContent = shopItem.item.name
+      itemName.style.fontSize = '12px'
+      
+      const buyBtn = document.createElement('button')
+      buyBtn.textContent = `${shopItem.cost}g`
+      buyBtn.style.padding = '2px 6px'
+      buyBtn.style.fontSize = '11px'
+      buyBtn.style.border = 'none'
+      buyBtn.style.borderRadius = '2px'
+      buyBtn.style.cursor = 'pointer'
+      
+      // Check if player can afford
+      const canAfford = state.run.gold >= shopItem.cost
+      
+      if (canAfford) {
+        buyBtn.style.background = '#4a7c59'
+        buyBtn.style.color = 'white'
+        buyBtn.addEventListener('click', () => gameStore.buyShopItem(index))
+      } else {
+        buyBtn.style.background = '#7c4a4a'
+        buyBtn.style.color = '#ccc'
+        buyBtn.disabled = true
+        buyBtn.title = 'Not enough gold'
+      }
+      
+      itemInfo.appendChild(itemIcon)
+      itemInfo.appendChild(itemName)
+      itemEl.appendChild(itemInfo)
+      itemEl.appendChild(buyBtn)
+      shopItemsEl.appendChild(itemEl)
+    })
+  } else {
+    shopWidget.style.display = 'none'
   }
 }
 
@@ -775,6 +833,12 @@ rewindProceedBtn.addEventListener('click', () => {
 rewindCancelBtn.addEventListener('click', () => {
   console.log('Player chose to use Rewind item')
   gameStore.proceedWithRewind()
+})
+
+// Shop widget button handlers
+shopCloseBtn.addEventListener('click', () => {
+  console.log('Closing shop')
+  gameStore.closeShop()
 })
 
 // General click handler to clear highlights when clicking outside clue areas

@@ -20,7 +20,7 @@ export const BEAR_TRAP: ItemData = {
 export const FIRST_AID: ItemData = {
   id: 'first-aid',
   name: 'First Aid',
-  description: 'If you have 5+ gold, lose 5 gold and gain 10 HP',
+  description: 'Gain 10 HP instantly',
   icon: '❤️',
   immediate: true
 }
@@ -58,10 +58,23 @@ export const REWIND: ItemData = {
   immediate: false
 }
 
+export const SHOP: ItemData = {
+  id: 'shop',
+  name: 'Shop',
+  description: 'A traveling merchant with wares to sell',
+  icon: '🏪',
+  immediate: true
+}
+
 // All available items
 export const ALL_ITEMS: ItemData[] = [
   GOLD_COIN, BEAR_TRAP, FIRST_AID, 
   CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
+]
+
+// Items available for purchase in shops (excludes shop itself and gold)
+export const SHOP_ITEMS: ItemData[] = [
+  BEAR_TRAP, FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
 ]
 
 // Sample monsters - no scaling, fixed stats

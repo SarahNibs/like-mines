@@ -41,7 +41,6 @@ export interface PlayerStats {
   attack: number
   defense: number
   inventory: (ItemData | null)[] // 5 slots, null = empty
-  overflowItem: ItemData | null // Special overflow slot
 }
 
 export interface Tile {
@@ -82,7 +81,6 @@ export interface RunState {
   attack: number
   defense: number
   inventory: (ItemData | null)[] // 5 slots, null = empty
-  overflowItem: ItemData | null // Special overflow slot
 }
 
 export interface GameState {
@@ -94,6 +92,8 @@ export interface GameState {
   run: RunState
   transmuteMode: boolean // Whether player is in transmute tile selection mode
   detectorMode: boolean // Whether player is in detector tile selection mode
+  shopOpen: boolean // Whether the shop widget is currently open
+  shopItems: Array<{item: ItemData, cost: number}> // Current shop inventory
   pendingRewind?: {
     tile: Tile
     rewindIndex: number

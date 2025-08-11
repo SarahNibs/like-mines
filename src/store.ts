@@ -217,11 +217,16 @@ class GameStore {
           this.setState({ gameStatus: 'player-died' })
           return
         }
+        
+        // Handle shop opening
+        if (item.id === 'shop') {
+          this.openShop()
+        }
       } else {
-        // Add to inventory
+        // Try to add to inventory
         const success = addItemToInventory(run, item)
         if (!success) {
-          console.log('Inventory full! Item in overflow slot.')
+          console.log(`Inventory full! ${item.name} was lost.`)
         }
       }
     } else if (tile.content === TileContent.Monster && tile.monsterData) {
@@ -245,7 +250,10 @@ class GameStore {
     if (!item) return
     
     // Handle special items
-    if (item.id === 'crystal-ball') {
+    if (item.id === 'rewind') {
+      console.log('Rewind is passive - only activates when revealing dangerous tiles')
+      return // Do nothing - rewinds are passive items
+    } else if (item.id === 'crystal-ball') {
       this.useCrystalBall()
     } else if (item.id === 'transmute') {
       this.startTransmuteMode(index)
@@ -495,6 +503,81 @@ class GameStore {
     }
   }
 
+  // Shop functionality
+  private openShop(): void {
+    // Generate 4 random items with costs 2, 3, 4, 5 gold
+    import('./items').then(({ SHOP_ITEMS }) => {
+      const costs = [2, 3, 4, 5]
+      const shopItems = []
+      
+      for (let i = 0; i < 4; i++) {
+        const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
+        shopItems.push({
+          item: randomItem,
+          cost: costs[i]
+        })
+      }
+      
+      console.log('Shop opened with items:', shopItems)
+      this.setState({
+        shopOpen: true,
+        shopItems
+      })
+    })
+  }
+
+  // Buy item from shop
+  buyShopItem(index: number): boolean {
+    if (!this.state.shopOpen || index >= this.state.shopItems.length) {
+      return false
+    }
+    
+    const shopItem = this.state.shopItems[index]
+    const run = this.state.run
+    
+    // Check if player has enough gold
+    if (run.gold < shopItem.cost) {
+      console.log(`Not enough gold! Need ${shopItem.cost}, have ${run.gold}`)
+      return false
+    }
+    
+    // Deduct gold
+    run.gold -= shopItem.cost
+    
+    // Handle immediate vs inventory items
+    if (shopItem.item.immediate) {
+      // Use immediate item right away
+      const message = applyItemEffect(run, shopItem.item)
+      console.log(`Bought and used ${shopItem.item.name} for ${shopItem.cost} gold: ${message}`)
+    } else {
+      // Try to add item to inventory
+      const success = addItemToInventory(run, shopItem.item)
+      if (!success) {
+        console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`)
+      } else {
+        console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold`)
+      }
+    }
+    
+    // Remove the bought item from shop
+    const newShopItems = [...this.state.shopItems]
+    newShopItems.splice(index, 1)
+    
+    this.setState({ 
+      run: { ...run },
+      shopItems: newShopItems
+    })
+    return true
+  }
+
+  // Close shop
+  closeShop(): void {
+    this.setState({
+      shopOpen: false,
+      shopItems: []
+    })
+  }
+
   // Check if Rewind should protect against revealing dangerous tiles
   private checkRewindProtection(tile: any): boolean {
     // Check if player has Rewind in inventory
@@ -585,11 +668,16 @@ class GameStore {
     }
   }
 
-  // Discard item from overflow
-  discardOverflowItem(): void {
-    this.state.run.overflowItem = null
+  // Discard item from inventory
+  discardInventoryItem(index: number): void {
+    const item = this.state.run.inventory[index]
+    if (!item) return
+    
+    console.log(`Discarded ${item.name}`)
+    removeItemFromInventory(this.state.run, index)
     this.setState({ run: { ...this.state.run } })
   }
+
 
   resetGame(): void {
     // Clear any pending AI turn

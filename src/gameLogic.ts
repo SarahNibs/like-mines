@@ -1,7 +1,6 @@
 import { Board, Tile, TileOwner, TileContent, GameState, RunState, getTileAt, getTilesByOwner, ItemData, MonsterData } from './types'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
-import { DETECTOR, TRANSMUTE } from './items'
 
 // Get adjacent tile positions (8-directional)
 function getAdjacentPositions(x: number, y: number): Array<{x: number, y: number}> {
@@ -75,8 +74,7 @@ export function createInitialRunState(): RunState {
     gold: 0,
     attack: 5, // Starting attack power
     defense: 0, // Starting defense
-    inventory: [DETECTOR, TRANSMUTE, null, null, null], // Start with Detector and Transmute for testing
-    overflowItem: null
+    inventory: [null, null, null, null, null] // 5 empty slots
   }
 }
 
@@ -95,7 +93,9 @@ export function createInitialGameState(): GameState {
     clues: [initialClue], // Start with one clue
     run,
     transmuteMode: false,
-    detectorMode: false
+    detectorMode: false,
+    shopOpen: false,
+    shopItems: []
   }
 }
 
@@ -122,6 +122,8 @@ export function progressToNextLevel(currentState: GameState): GameState {
     clues: [initialClue], // Reset clues for new board
     transmuteMode: false, // Reset transmute mode for new board
     detectorMode: false, // Reset detector mode for new board
+    shopOpen: false, // Close shop for new board
+    shopItems: [], // Clear shop items for new board
     run: {
       ...currentState.run,
       currentLevel: newLevel
@@ -162,7 +164,7 @@ export function fightMonster(monster: MonsterData, playerAttack: number, playerD
   return totalDamageToPlayer
 }
 
-// Add item to inventory, returns true if successful, false if overflow
+// Add item to inventory, returns true if successful, false if full
 export function addItemToInventory(runState: RunState, item: ItemData): boolean {
   // Find first empty slot
   for (let i = 0; i < runState.inventory.length; i++) {
@@ -172,8 +174,7 @@ export function addItemToInventory(runState: RunState, item: ItemData): boolean 
     }
   }
   
-  // No space - put in overflow
-  runState.overflowItem = item
+  // No space - item is lost
   return false
 }
 
@@ -181,12 +182,6 @@ export function addItemToInventory(runState: RunState, item: ItemData): boolean 
 export function removeItemFromInventory(runState: RunState, index: number): void {
   if (index >= 0 && index < runState.inventory.length) {
     runState.inventory[index] = null
-    
-    // If we have overflow, move it to the empty slot
-    if (runState.overflowItem) {
-      runState.inventory[index] = runState.overflowItem
-      runState.overflowItem = null
-    }
   }
 }
 
@@ -202,13 +197,8 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       return 'Bear trap! Lost 1 HP.'
       
     case 'first-aid':
-      if (runState.gold >= 5) {
-        runState.gold -= 5
-        runState.hp = Math.min(runState.maxHp, runState.hp + 10)
-        return 'Used first aid! Lost 5 gold, gained 10 HP.'
-      } else {
-        return 'First aid kit found, but you need 5 gold to use it!'
-      }
+      runState.hp = Math.min(runState.maxHp, runState.hp + 10)
+      return 'Used first aid! Gained 10 HP.'
       
     case 'crystal-ball':
       // This shouldn't be called since crystal ball is not immediate anymore
@@ -225,6 +215,10 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
     case 'detector':
       // This shouldn't be called since detector is not immediate anymore
       return 'Detector effect should be handled in store!'
+      
+    case 'shop':
+      // Shop opening is handled in store
+      return 'Shop opened!'
       
     default:
       return `Unknown item: ${item.name}`

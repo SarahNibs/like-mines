@@ -1,6 +1,6 @@
 import * as ROT from 'rot-js'
 import { Board, Tile, TileOwner, TileContent } from './types'
-import { ALL_ITEMS, createMonster } from './items'
+import { ALL_ITEMS, SHOP, createMonster } from './items'
 
 export interface BoardConfig {
   width: number
@@ -11,7 +11,11 @@ export interface BoardConfig {
 }
 
 // Generate content for a tile based on its owner and level
-function generateTileContent(owner: TileOwner, level: number, rng: ROT.RNG, playerGold: number = 0): { content: TileContent, itemData?: any, monsterData?: any } {
+function generateTileContent(owner: TileOwner, level: number, rng: ROT.RNG, playerGold: number = 0, forceShop: boolean = false): { content: TileContent, itemData?: any, monsterData?: any } {
+  // Force shop if requested (for guaranteed shop placement)
+  if (forceShop && owner === TileOwner.Neutral) {
+    return { content: TileContent.Item, itemData: SHOP }
+  }
   // Balanced content frequency
   const roll = rng.getUniform()
   
@@ -54,8 +58,10 @@ function generateTileContent(owner: TileOwner, level: number, rng: ROT.RNG, play
         item = playerGold >= 5 
           ? ALL_ITEMS.find(i => i.id === 'first-aid')! 
           : ALL_ITEMS.find(i => i.id === 'gold-coin')! // Give gold instead
-      } else if (itemRoll < 0.85) {
+      } else if (itemRoll < 0.82) {
         item = ALL_ITEMS.find(i => i.id === 'crystal-ball')! // Preferentially on neutral
+      } else if (itemRoll < 0.86) {
+        item = SHOP // Small chance for shops on neutral tiles
       } else {
         item = ALL_ITEMS[Math.floor(rng.getUniform() * ALL_ITEMS.length)]
       }
@@ -148,17 +154,25 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0): Boar
   let actualPlayerTiles = 0
   let actualOpponentTiles = 0
   let index = 0
+  let shopPlaced = false // Track if shop has been placed for level 6
   
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const tileType = tileTypes[index++]
       tiles[y][x].owner = tileType
       
+      // Check if we need to force a shop on level 6
+      const shouldForceShop = actualLevel === 6 && !shopPlaced && tileType === TileOwner.Neutral
+      
       // Generate content for this tile based on level
-      const contentData = generateTileContent(tileType, actualLevel, rng, playerGold)
+      const contentData = generateTileContent(tileType, actualLevel, rng, playerGold, shouldForceShop)
       tiles[y][x].content = contentData.content
       if (contentData.itemData) {
         tiles[y][x].itemData = contentData.itemData
+        // Track if we placed a shop
+        if (contentData.itemData.id === 'shop') {
+          shopPlaced = true
+        }
       }
       if (contentData.monsterData) {
         tiles[y][x].monsterData = contentData.monsterData
