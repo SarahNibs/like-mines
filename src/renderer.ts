@@ -355,6 +355,11 @@ export class GameRenderer {
         this.ctx.lineTo(x + this.tileSize - 5, y + 5)
         this.ctx.stroke()
       }
+      
+      // Draw chain indicators if tile has chain data
+      if (tile.chainData) {
+        this.drawChainIndicator(tile, x, y, board)
+      }
     }
     
     // Draw detector scan results if present (overlay that works on both revealed and unrevealed tiles)
@@ -397,6 +402,170 @@ export class GameRenderer {
       this.ctx.textAlign = 'center'
       this.ctx.textBaseline = 'middle'
     }
+  }
+
+  // Draw chain indicator for chained tiles
+  private drawChainIndicator(tile: Tile, x: number, y: number, board: Board): void {
+    const ctx = this.ctx
+    const chainData = tile.chainData!
+    
+    // Find the required tile to determine chain direction
+    const requiredTile = board.tiles[chainData.requiredTileY][chainData.requiredTileX]
+    
+    // Calculate direction from this tile to required tile
+    const dx = chainData.requiredTileX - tile.x
+    const dy = chainData.requiredTileY - tile.y
+    
+    // Chain visual style
+    ctx.save()
+    
+    if (chainData.isBlocked) {
+      // Draw lock icon for blocked tiles
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.9)' // Red background
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2
+      
+      // Draw lock background circle in center
+      const centerX = x + this.tileSize / 2
+      const centerY = y + this.tileSize / 2
+      const radius = this.tileSize * 0.15
+      
+      ctx.beginPath()
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      
+      // Draw lock icon (🔒)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = `${Math.floor(this.tileSize * 0.2)}px serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('🔒', centerX, centerY)
+      
+      // Calculate the exact position where the key will be on the required tile
+      const requiredTileX = this.padding + chainData.requiredTileX * (this.tileSize + this.gap)
+      const requiredTileY = this.padding + chainData.requiredTileY * (this.tileSize + this.gap)
+      const keyRadius = this.tileSize * 0.12
+      
+      let keyPositionX: number, keyPositionY: number
+      
+      // Calculate where the key will be positioned on the required tile
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal positioning
+        if (dx > 0) {
+          // This tile is to the left of required tile, key is on left edge of required tile
+          keyPositionX = requiredTileX + keyRadius * 1.2
+          keyPositionY = requiredTileY + this.tileSize / 2
+        } else {
+          // This tile is to the right of required tile, key is on right edge of required tile  
+          keyPositionX = requiredTileX + this.tileSize - keyRadius * 1.2
+          keyPositionY = requiredTileY + this.tileSize / 2
+        }
+      } else {
+        // Vertical positioning
+        if (dy > 0) {
+          // This tile is above required tile, key is on top edge of required tile
+          keyPositionX = requiredTileX + this.tileSize / 2
+          keyPositionY = requiredTileY + keyRadius * 1.2
+        } else {
+          // This tile is below required tile, key is on bottom edge of required tile
+          keyPositionX = requiredTileX + this.tileSize / 2
+          keyPositionY = requiredTileY + this.tileSize - keyRadius * 1.2
+        }
+      }
+      
+      // Draw arrow pointing to the key position
+      ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)' // Orange arrow
+      ctx.lineWidth = 3
+      
+      // Arrow start position (edge of lock)
+      const arrowStartX = centerX + dx * radius * 1.5
+      const arrowStartY = centerY + dy * radius * 1.5
+      
+      // Arrow end position (towards the key position on required tile)
+      const arrowDirectionX = keyPositionX - arrowStartX
+      const arrowDirectionY = keyPositionY - arrowStartY
+      const arrowDistance = Math.sqrt(arrowDirectionX * arrowDirectionX + arrowDirectionY * arrowDirectionY)
+      const arrowLength = Math.min(this.tileSize * 0.3, arrowDistance * 0.4)
+      
+      const arrowEndX = arrowStartX + (arrowDirectionX / arrowDistance) * arrowLength
+      const arrowEndY = arrowStartY + (arrowDirectionY / arrowDistance) * arrowLength
+      
+      // Draw arrow line
+      ctx.beginPath()
+      ctx.moveTo(arrowStartX, arrowStartY)
+      ctx.lineTo(arrowEndX, arrowEndY)
+      ctx.stroke()
+      
+      // Draw arrow head
+      const arrowHeadSize = 6
+      const angle = Math.atan2(arrowDirectionY, arrowDirectionX)
+      
+      ctx.beginPath()
+      ctx.moveTo(arrowEndX, arrowEndY)
+      ctx.lineTo(
+        arrowEndX - arrowHeadSize * Math.cos(angle - Math.PI / 6),
+        arrowEndY - arrowHeadSize * Math.sin(angle - Math.PI / 6)
+      )
+      ctx.moveTo(arrowEndX, arrowEndY)
+      ctx.lineTo(
+        arrowEndX - arrowHeadSize * Math.cos(angle + Math.PI / 6),
+        arrowEndY - arrowHeadSize * Math.sin(angle + Math.PI / 6)
+      )
+      ctx.stroke()
+      
+    } else {
+      // Draw key icon for unblocked tiles (tiles that can unlock others)
+      ctx.fillStyle = 'rgba(100, 255, 100, 0.9)' // Green background
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2
+      
+      // Position key on the side closest to the blocked tile
+      const keyRadius = this.tileSize * 0.12
+      const centerX = x + this.tileSize / 2
+      const centerY = y + this.tileSize / 2
+      
+      // Calculate key position on the edge closest to the blocked tile
+      let keyX: number, keyY: number
+      
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal positioning (left or right side)
+        if (dx > 0) {
+          // Blocked tile is to the right, put key on right edge
+          keyX = x + this.tileSize - keyRadius * 1.2
+          keyY = centerY
+        } else {
+          // Blocked tile is to the left, put key on left edge
+          keyX = x + keyRadius * 1.2
+          keyY = centerY
+        }
+      } else {
+        // Vertical positioning (top or bottom side)
+        if (dy > 0) {
+          // Blocked tile is below, put key on bottom edge
+          keyX = centerX
+          keyY = y + this.tileSize - keyRadius * 1.2
+        } else {
+          // Blocked tile is above, put key on top edge
+          keyX = centerX
+          keyY = y + keyRadius * 1.2
+        }
+      }
+      
+      ctx.beginPath()
+      ctx.arc(keyX, keyY, keyRadius, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      
+      // Draw key icon (🔑)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = `${Math.floor(this.tileSize * 0.15)}px serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('🔑', keyX, keyY)
+    }
+    
+    ctx.restore()
   }
 
   // Render the entire board

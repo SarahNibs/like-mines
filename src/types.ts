@@ -68,6 +68,12 @@ export interface Tile {
     opponentAdjacent: number
     neutralAdjacent: number
   } // Detector scan results
+  chainData?: {
+    chainId: string // Unique identifier for this chain
+    isBlocked: boolean // True if this tile is blocked by the chain
+    requiredTileX: number // X coordinate of tile that must be revealed first
+    requiredTileY: number // Y coordinate of tile that must be revealed first
+  } // Chain constraint data
 }
 
 export interface Board {

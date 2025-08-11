@@ -55,6 +55,15 @@ class GameStore {
       return false
     }
     
+    // Check if tile is blocked by a chain
+    if (tile.chainData && tile.chainData.isBlocked) {
+      const requiredTile = getTileAt(this.state.board, tile.chainData.requiredTileX, tile.chainData.requiredTileY)
+      if (requiredTile && !requiredTile.revealed) {
+        console.log('Cannot click this tile - it\'s chained! Must reveal the connected tile first.')
+        return false
+      }
+    }
+    
     // Check for Rewind protection on dangerous tiles (unless bypassed with SHIFT)
     if (!bypassRewind && this.checkRewindProtection(tile)) {
       return false // Player chose not to reveal
@@ -248,7 +257,7 @@ class GameStore {
       
       // RICH upgrade: add gold items to adjacent tiles when defeating monsters
       if (run.upgrades.includes('rich')) {
-        this.applyRichUpgrade(tile.x, tile.y)
+        this.applyRichUpgrade(tile.x, tile.y).catch(console.error)
       }
       
       console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${run.loot} gold. HP: ${run.hp}/${run.maxHp}`)
@@ -656,28 +665,38 @@ class GameStore {
   }
 
   // Apply RICH upgrade effect: add gold items to adjacent tiles
-  private applyRichUpgrade(x: number, y: number): void {
+  private async applyRichUpgrade(x: number, y: number): Promise<void> {
     const board = this.state.board
     
     // Import the actual GOLD_COIN item
-    import('./items').then(({ GOLD_COIN }) => {
-      // Check all 8 adjacent positions
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue // Skip center tile
-          
-          const adjX = x + dx
-          const adjY = y + dy
-          const adjTile = getTileAt(board, adjX, adjY)
-          
-          // Add gold to unrevealed tiles that don't already have content icons
-          if (adjTile && !adjTile.revealed && adjTile.content === TileContent.Empty) {
-            adjTile.content = TileContent.Item
-            adjTile.itemData = GOLD_COIN
-          }
+    const { GOLD_COIN } = await import('./items')
+    
+    let coinsAdded = false
+    
+    // Check all 8 adjacent positions
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue // Skip center tile
+        
+        const adjX = x + dx
+        const adjY = y + dy
+        const adjTile = getTileAt(board, adjX, adjY)
+        
+        // Add gold to unrevealed tiles that don't already have content icons
+        if (adjTile && !adjTile.revealed && adjTile.content === TileContent.Empty) {
+          adjTile.content = TileContent.Item
+          adjTile.itemData = GOLD_COIN
+          coinsAdded = true
         }
       }
-    })
+    }
+    
+    // Force a state update to make the coins visible immediately
+    if (coinsAdded) {
+      this.setState({
+        board: { ...board }
+      })
+    }
   }
 
   // Check if Rewind should protect against revealing dangerous tiles

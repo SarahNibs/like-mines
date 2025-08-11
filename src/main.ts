@@ -803,6 +803,7 @@ canvas.addEventListener('contextmenu', (event) => {
 // Check if mouse is over a tile with item/upgrade/monster content (specifically over the icon area)
 function isMouseOverTileContent(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
   if (!tile.itemData && !tile.upgradeData && !tile.monsterData) return false
+  if (tile.revealed) return false // Don't show hover on revealed tiles
   
   // Calculate tile position
   const x = padding + tile.x * (tileSize + gap)
@@ -845,6 +846,56 @@ function isMouseOverDetectorScan(mouseX: number, mouseY: number, tile: any, tile
          mouseY >= boxY && mouseY <= boxY + boxHeight
 }
 
+// Check if mouse is over chain indicator
+function isMouseOverChainIndicator(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
+  if (!tile.chainData || tile.revealed) return false
+  
+  const x = padding + tile.x * (tileSize + gap)
+  const y = padding + tile.y * (tileSize + gap)
+  const chainData = tile.chainData
+  
+  if (chainData.isBlocked) {
+    // Check if hovering over the lock icon in center
+    const centerX = x + tileSize / 2
+    const centerY = y + tileSize / 2
+    const radius = tileSize * 0.15
+    const distance = Math.sqrt((mouseX - centerX) * (mouseX - centerX) + (mouseY - centerY) * (mouseY - centerY))
+    return distance <= radius * 1.5 // Slightly larger hover area
+  } else {
+    // Check if hovering over the key icon on the edge
+    const dx = chainData.requiredTileX - tile.x
+    const dy = chainData.requiredTileY - tile.y
+    const keyRadius = tileSize * 0.12
+    const centerX = x + tileSize / 2
+    const centerY = y + tileSize / 2
+    
+    let keyX: number, keyY: number
+    
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal positioning
+      if (dx > 0) {
+        keyX = x + tileSize - keyRadius * 1.2
+        keyY = centerY
+      } else {
+        keyX = x + keyRadius * 1.2
+        keyY = centerY
+      }
+    } else {
+      // Vertical positioning
+      if (dy > 0) {
+        keyX = centerX
+        keyY = y + tileSize - keyRadius * 1.2
+      } else {
+        keyX = centerX
+        keyY = y + keyRadius * 1.2
+      }
+    }
+    
+    const distance = Math.sqrt((mouseX - keyX) * (mouseX - keyX) + (mouseY - keyY) * (mouseY - keyY))
+    return distance <= keyRadius * 1.5 // Slightly larger hover area
+  }
+}
+
 // Mouse hover handling for board tiles to highlight corresponding clue tiles and show detector tooltips
 canvas.addEventListener('mousemove', (event) => {
   const rect = canvas.getBoundingClientRect()
@@ -871,6 +922,23 @@ canvas.addEventListener('mousemove', (event) => {
       const clientY = event.clientY
       showDetectorTooltip(clientX, clientY, tile.detectorScan.playerAdjacent, tile.detectorScan.opponentAdjacent, tile.detectorScan.neutralAdjacent)
       detectorHover = true
+    } else if (isMouseOverChainIndicator(mouseX, mouseY, tile, tileSize, padding, gap)) {
+      const clientX = event.clientX
+      const clientY = event.clientY
+      
+      // Show chain tooltip
+      const chainData = tile.chainData
+      
+      if (chainData.isBlocked) {
+        const title = "🔒 Chained Tile"
+        const description = "This tile is locked! Must reveal the connected tile first."
+        showItemTooltip(clientX, clientY, title, description)
+      } else {
+        const title = "🔑 Chain Key"
+        const description = "This tile unlocks a chained tile."
+        showItemTooltip(clientX, clientY, title, description)
+      }
+      itemHover = true
     } else if (isMouseOverTileContent(mouseX, mouseY, tile, tileSize, padding, gap)) {
       const clientX = event.clientX
       const clientY = event.clientY
