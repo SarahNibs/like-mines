@@ -1,5 +1,6 @@
 import * as ROT from 'rot-js'
 import { Board, Tile, TileOwner, TileContent } from './types'
+import { ALL_ITEMS, createMonster } from './items'
 
 export interface BoardConfig {
   width: number
@@ -9,12 +10,93 @@ export interface BoardConfig {
   seed?: number // For reproducible generation
 }
 
-export function generateBoard(config: BoardConfig): Board {
+// Generate content for a tile based on its owner and level
+function generateTileContent(owner: TileOwner, level: number, rng: ROT.RNG, playerGold: number = 0): { content: TileContent, itemData?: any, monsterData?: any } {
+  // Balanced content frequency
+  const roll = rng.getUniform()
+  
+  if (roll < 0.75) {
+    return { content: TileContent.Empty }
+  }
+  
+  // Content distribution based on tile owner
+  if (owner === TileOwner.Player) {
+    // Player tiles: 85% items, 15% monsters - much more items, fewer monsters
+    if (roll < 0.9625) {
+      const itemRoll = rng.getUniform()
+      let item
+      if (itemRoll < 0.6) {
+        item = ALL_ITEMS.find(i => i.id === 'gold-coin')! // Much more common
+      } else if (itemRoll < 0.8) {
+        // Only show first aid if player has enough gold to use it
+        item = playerGold >= 5 
+          ? ALL_ITEMS.find(i => i.id === 'first-aid')! 
+          : ALL_ITEMS.find(i => i.id === 'gold-coin')! // Give gold instead
+      } else if (itemRoll < 0.9) {
+        item = ALL_ITEMS.find(i => i.id === 'bear-trap')! // Less bear traps
+      } else {
+        item = ALL_ITEMS[Math.floor(rng.getUniform() * ALL_ITEMS.length)]
+      }
+      return { content: TileContent.Item, itemData: item }
+    } else {
+      const monster = createMonster(level)
+      return { content: TileContent.Monster, monsterData: monster }
+    }
+  } else if (owner === TileOwner.Neutral) {
+    // Neutral tiles: 85% items, 15% monsters - more healing items
+    if (roll < 0.9625) {
+      const itemRoll = rng.getUniform()
+      let item
+      if (itemRoll < 0.5) {
+        item = ALL_ITEMS.find(i => i.id === 'gold-coin')! // Common
+      } else if (itemRoll < 0.7) {
+        // Only show first aid if player has enough gold to use it
+        item = playerGold >= 5 
+          ? ALL_ITEMS.find(i => i.id === 'first-aid')! 
+          : ALL_ITEMS.find(i => i.id === 'gold-coin')! // Give gold instead
+      } else if (itemRoll < 0.85) {
+        item = ALL_ITEMS.find(i => i.id === 'crystal-ball')! // Preferentially on neutral
+      } else {
+        item = ALL_ITEMS[Math.floor(rng.getUniform() * ALL_ITEMS.length)]
+      }
+      return { content: TileContent.Item, itemData: item }
+    } else {
+      const monster = createMonster(level)
+      return { content: TileContent.Monster, monsterData: monster }
+    }
+  } else {
+    // Opponent tiles: 90% items, 10% monsters - mostly safe
+    if (roll < 0.975) {
+      const itemRoll = rng.getUniform()
+      let item
+      if (itemRoll < 0.7) {
+        item = ALL_ITEMS.find(i => i.id === 'gold-coin')! // Mostly gold
+      } else if (itemRoll < 0.85) {
+        // Only show first aid if player has enough gold to use it
+        item = playerGold >= 5 
+          ? ALL_ITEMS.find(i => i.id === 'first-aid')! 
+          : ALL_ITEMS.find(i => i.id === 'gold-coin')! // Give gold instead
+      } else {
+        item = ALL_ITEMS[Math.floor(rng.getUniform() * ALL_ITEMS.length)]
+      }
+      return { content: TileContent.Item, itemData: item }
+    } else {
+      const monster = createMonster(level)
+      return { content: TileContent.Monster, monsterData: monster }
+    }
+  }
+}
+
+export function generateBoard(config: BoardConfig, playerGold: number = 0): Board {
   const { width, height, playerTileRatio, opponentTileRatio, seed } = config
   
-  // Set seed for reproducible generation
+  // Extract the actual level from the seed (seed = level * 1000 + random)
+  const actualLevel = Math.floor((seed || 1) / 1000) || 1
+  
+  // Create RNG instance for content generation (use seed for content, not layout)
+  const rng = ROT.RNG
   if (seed !== undefined) {
-    ROT.RNG.setSeed(seed)
+    rng.setSeed(seed)
   }
   
   const tiles: Tile[][] = []
@@ -56,8 +138,11 @@ export function generateBoard(config: BoardConfig): Board {
     tileTypes.push(TileOwner.Neutral)
   }
   
-  // Shuffle the tile types uniformly
-  ROT.RNG.shuffle(tileTypes)
+  // Shuffle the tile types uniformly using Fisher-Yates shuffle with Math.random
+  for (let i = tileTypes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tileTypes[i], tileTypes[j]] = [tileTypes[j], tileTypes[i]]
+  }
   
   // Assign tile types to positions
   let actualPlayerTiles = 0
@@ -68,6 +153,16 @@ export function generateBoard(config: BoardConfig): Board {
     for (let x = 0; x < width; x++) {
       const tileType = tileTypes[index++]
       tiles[y][x].owner = tileType
+      
+      // Generate content for this tile based on level
+      const contentData = generateTileContent(tileType, actualLevel, rng, playerGold)
+      tiles[y][x].content = contentData.content
+      if (contentData.itemData) {
+        tiles[y][x].itemData = contentData.itemData
+      }
+      if (contentData.monsterData) {
+        tiles[y][x].monsterData = contentData.monsterData
+      }
       
       if (tileType === TileOwner.Player) {
         actualPlayerTiles++
@@ -106,6 +201,6 @@ export function getBoardConfigForLevel(level: number): BoardConfig {
     height,
     playerTileRatio,
     opponentTileRatio,
-    seed: level // Reproducible boards for same level
+    seed: level * 1000 + Math.floor(Math.random() * 1000) // Semi-random seed
   }
 }

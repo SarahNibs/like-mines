@@ -1,4 +1,4 @@
-import { Board, Tile, TileOwner, TileContent, GameState, RunState, getTileAt, getTilesByOwner } from './types'
+import { Board, Tile, TileOwner, TileContent, GameState, RunState, getTileAt, getTilesByOwner, ItemData, MonsterData } from './types'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
 
@@ -27,9 +27,9 @@ export function countAdjacentTiles(board: Board, x: number, y: number, ownerType
 }
 
 // Create board for current level
-export function createBoardForLevel(level: number): Board {
+export function createBoardForLevel(level: number, playerGold: number = 0): Board {
   const config = getBoardConfigForLevel(level)
-  return generateBoard(config)
+  return generateBoard(config, playerGold)
 }
 
 // Reveal a tile and update board state
@@ -69,14 +69,20 @@ export function createInitialRunState(): RunState {
     currentLevel: 1,
     maxLevel: 10, // 10-level run for testing
     hp: 100,
-    maxHp: 100
+    maxHp: 100,
+    // Player combat and inventory stats
+    gold: 0,
+    attack: 5, // Starting attack power
+    defense: 0, // Starting defense
+    inventory: [null, null, null, null, null], // 5 empty slots
+    overflowItem: null
   }
 }
 
 // Create initial game state
 export function createInitialGameState(): GameState {
   const run = createInitialRunState()
-  const board = createBoardForLevel(run.currentLevel)
+  const board = createBoardForLevel(run.currentLevel, run.gold)
   const initialClue = generateClue(board)
   const boardStatus = checkBoardStatus(board)
   
@@ -102,7 +108,7 @@ export function progressToNextLevel(currentState: GameState): GameState {
     }
   }
   
-  const newBoard = createBoardForLevel(newLevel)
+  const newBoard = createBoardForLevel(newLevel, currentState.run.gold)
   const initialClue = generateClue(newBoard)
   
   return {
@@ -115,5 +121,102 @@ export function progressToNextLevel(currentState: GameState): GameState {
       ...currentState.run,
       currentLevel: newLevel
     }
+  }
+}
+
+// Combat system - returns damage taken by player
+export function fightMonster(monster: MonsterData, playerAttack: number, playerDefense: number): number {
+  let monsterHp = monster.hp
+  let totalDamageToPlayer = 0
+  let rounds = 0
+  const maxRounds = 1000 // Safety check to prevent infinite loops
+  
+  console.log(`Combat: Player (${playerAttack} atk, ${playerDefense} def) vs ${monster.name} (${monster.attack} atk, ${monster.defense} def, ${monster.hp} hp)`)
+  
+  while (monsterHp > 0 && rounds < maxRounds) {
+    // Monster attacks first
+    const damageToPlayer = Math.max(1, monster.attack - playerDefense)
+    totalDamageToPlayer += damageToPlayer
+    
+    // Player attacks back
+    const damageToMonster = Math.max(1, playerAttack - monster.defense)
+    monsterHp -= damageToMonster
+    
+    rounds++
+    
+    if (rounds % 100 === 0) {
+      console.log(`Combat round ${rounds}: Monster HP ${monsterHp}, Player damage taken so far: ${totalDamageToPlayer}`)
+    }
+  }
+  
+  if (rounds >= maxRounds) {
+    console.error(`Combat exceeded max rounds! Monster HP: ${monsterHp}, Total damage: ${totalDamageToPlayer}`)
+  }
+  
+  console.log(`Combat ended after ${rounds} rounds. Total damage to player: ${totalDamageToPlayer}`)
+  return totalDamageToPlayer
+}
+
+// Add item to inventory, returns true if successful, false if overflow
+export function addItemToInventory(runState: RunState, item: ItemData): boolean {
+  // Find first empty slot
+  for (let i = 0; i < runState.inventory.length; i++) {
+    if (runState.inventory[i] === null) {
+      runState.inventory[i] = item
+      return true
+    }
+  }
+  
+  // No space - put in overflow
+  runState.overflowItem = item
+  return false
+}
+
+// Remove item from inventory
+export function removeItemFromInventory(runState: RunState, index: number): void {
+  if (index >= 0 && index < runState.inventory.length) {
+    runState.inventory[index] = null
+    
+    // If we have overflow, move it to the empty slot
+    if (runState.overflowItem) {
+      runState.inventory[index] = runState.overflowItem
+      runState.overflowItem = null
+    }
+  }
+}
+
+// Handle immediate item effects
+export function applyItemEffect(runState: RunState, item: ItemData): string {
+  switch (item.id) {
+    case 'gold-coin':
+      runState.gold += 1
+      return 'Gained 1 gold!'
+      
+    case 'bear-trap':
+      runState.hp = runState.hp - 1
+      return 'Bear trap! Lost 1 HP.'
+      
+    case 'first-aid':
+      if (runState.gold >= 5) {
+        runState.gold -= 5
+        runState.hp = Math.min(runState.maxHp, runState.hp + 10)
+        return 'Used first aid! Lost 5 gold, gained 10 HP.'
+      } else {
+        return 'First aid kit found, but you need 5 gold to use it!'
+      }
+      
+    case 'crystal-ball':
+      // This shouldn't be called since crystal ball is not immediate anymore
+      return 'Crystal ball effect should be handled in store!'
+      
+    // Complex items - give gold for now
+    case 'detector': 
+    case 'transmute':
+    case 'rewind':
+      runState.gold += 2
+      return `Found ${item.name}! Complex item not implemented yet, gained 2 gold instead.`
+      
+    default:
+      return `Unknown item: ${item.name}`
   }
 }

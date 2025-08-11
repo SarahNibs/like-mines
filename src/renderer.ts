@@ -85,17 +85,22 @@ export class GameRenderer {
     const ctx = this.ctx
     ctx.save()
     
+    // Clip to tile boundaries to prevent texture from going outside
+    ctx.beginPath()
+    ctx.rect(x, y, this.tileSize, this.tileSize)
+    ctx.clip()
+    
     // Set up pattern styles
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
     ctx.lineWidth = 1
     
     switch (tileType) {
       case TileOwner.Player:
-        // Diagonal lines pattern
-        for (let i = 0; i < this.tileSize; i += 8) {
+        // Diagonal lines pattern (bottom-left to top-right)
+        for (let i = -this.tileSize; i < this.tileSize * 2; i += 8) {
           ctx.beginPath()
-          ctx.moveTo(x + i, y)
-          ctx.lineTo(x + i + this.tileSize, y + this.tileSize)
+          ctx.moveTo(x + i, y + this.tileSize)
+          ctx.lineTo(x + i + this.tileSize, y)
           ctx.stroke()
         }
         break
@@ -305,7 +310,26 @@ export class GameRenderer {
       this.ctx.fillText(adjacentCount.toString(), centerX, centerY)
       
     } else {
-      // Don't show anything for unrevealed tiles (no question marks)
+      // Show content icons on unrevealed tiles
+      if (tile.content !== TileContent.Empty) {
+        let icon = ''
+        if (tile.content === TileContent.Gold) {
+          icon = '💰'
+        } else if (tile.content === TileContent.Item && tile.itemData) {
+          icon = tile.itemData.icon
+        } else if (tile.content === TileContent.Monster && tile.monsterData) {
+          icon = tile.monsterData.icon
+        }
+        
+        if (icon) {
+          this.ctx.font = `${Math.floor(this.tileSize * 0.4)}px serif`
+          this.ctx.textAlign = 'center'
+          this.ctx.textBaseline = 'middle'
+          this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
+          // Draw icon in top-left corner
+          this.ctx.fillText(icon, x + this.tileSize * 0.25, y + this.tileSize * 0.25)
+        }
+      }
       
       // Draw annotation slash if annotated (bottom-left to top-right)
       if (tile.annotated) {

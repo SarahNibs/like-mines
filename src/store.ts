@@ -1,5 +1,5 @@
-import { GameState, getTileAt } from './types'
-import { createInitialGameState, revealTile, checkBoardStatus, progressToNextLevel } from './gameLogic'
+import { GameState, getTileAt, TileContent } from './types'
+import { createInitialGameState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect } from './gameLogic'
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
 
@@ -59,6 +59,14 @@ class GameStore {
     if (success) {
       const newBoardStatus = checkBoardStatus(this.state.board)
       const isPlayerTile = tile.owner === 'player'
+      
+      // Handle tile content after checking board status
+      this.handleTileContent(tile)
+      
+      // Check if player died after handling content
+      if (this.state.gameStatus === 'player-died') {
+        return // Exit early if player died
+      }
       
       // Player continues turn if they revealed their own tile, otherwise switch to AI
       const newTurn = (newBoardStatus === 'in-progress' && !isPlayerTile) ? 'opponent' : 'player'
@@ -184,6 +192,120 @@ class GameStore {
       board: { ...this.state.board }
     })
     return true
+  }
+
+  // Handle tile content when revealed
+  private handleTileContent(tile: any): void {
+    const run = this.state.run
+    
+    if (tile.content === TileContent.Item && tile.itemData) {
+      const item = tile.itemData
+      
+      if (item.immediate) {
+        // Apply immediate effect
+        const message = applyItemEffect(run, item)
+        console.log(message) // For now, just log - we'll add a message system later
+        
+        // Check for game over after immediate effects (like bear trap)
+        if (run.hp <= 0) {
+          console.log('Player died! Game over.')
+          this.setState({ gameStatus: 'player-died' })
+          return
+        }
+      } else {
+        // Add to inventory
+        const success = addItemToInventory(run, item)
+        if (!success) {
+          console.log('Inventory full! Item in overflow slot.')
+        }
+      }
+    } else if (tile.content === TileContent.Monster && tile.monsterData) {
+      const monster = tile.monsterData
+      const damage = fightMonster(monster, run.attack, run.defense)
+      run.hp = run.hp - damage
+      console.log(`Fought ${monster.name}! Took ${damage} damage. HP: ${run.hp}/${run.maxHp}`)
+      
+      // Check for game over
+      if (run.hp <= 0) {
+        console.log('Player died! Game over.')
+        this.setState({ gameStatus: 'player-died' })
+        return
+      }
+    }
+  }
+
+  // Use item from inventory
+  useInventoryItem(index: number): void {
+    const item = this.state.run.inventory[index]
+    if (!item) return
+    
+    // Handle crystal ball specially
+    if (item.id === 'crystal-ball') {
+      this.useCrystalBall()
+    } else {
+      const message = applyItemEffect(this.state.run, item)
+      console.log(message)
+    }
+    
+    removeItemFromInventory(this.state.run, index)
+    this.setState({ run: { ...this.state.run } })
+  }
+
+  // Crystal ball functionality - reveal random player tile
+  private useCrystalBall(): void {
+    const board = this.state.board
+    const unrevealedPlayerTiles = []
+    
+    // Find all unrevealed player tiles
+    for (let y = 0; y < board.height; y++) {
+      for (let x = 0; x < board.width; x++) {
+        const tile = board.tiles[y][x]
+        if (tile.owner === 'player' && !tile.revealed) {
+          unrevealedPlayerTiles.push({ x, y })
+        }
+      }
+    }
+    
+    if (unrevealedPlayerTiles.length === 0) {
+      console.log('Crystal Ball: No unrevealed player tiles to reveal!')
+      return
+    }
+    
+    // Pick a random unrevealed player tile
+    const randomIndex = Math.floor(Math.random() * unrevealedPlayerTiles.length)
+    const tilePos = unrevealedPlayerTiles[randomIndex]
+    
+    console.log(`Crystal Ball: Revealing player tile at (${tilePos.x}, ${tilePos.y})`)
+    
+    // Reveal the tile and handle its content
+    const tile = getTileAt(board, tilePos.x, tilePos.y)
+    if (tile) {
+      const success = revealTile(board, tilePos.x, tilePos.y, 'player')
+      if (success) {
+        // Handle tile content 
+        this.handleTileContent(tile)
+        
+        // Update board status
+        const newBoardStatus = checkBoardStatus(board)
+        this.setState({
+          board: { ...board },
+          boardStatus: newBoardStatus
+        })
+        
+        // Handle board completion if needed
+        if (newBoardStatus === 'won') {
+          this.handleBoardWon()
+        } else if (newBoardStatus === 'lost') {
+          this.handleBoardLost()
+        }
+      }
+    }
+  }
+
+  // Discard item from overflow
+  discardOverflowItem(): void {
+    this.state.run.overflowItem = null
+    this.setState({ run: { ...this.state.run } })
   }
 
   resetGame(): void {

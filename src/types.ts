@@ -17,6 +17,33 @@ export enum TileContent {
   Shop = 'shop'
 }
 
+export interface ItemData {
+  id: string
+  name: string
+  description: string
+  icon: string
+  immediate?: boolean // True if item has immediate effect on pickup
+}
+
+export interface MonsterData {
+  id: string
+  name: string
+  icon: string
+  attack: number
+  defense: number
+  hp: number
+}
+
+export interface PlayerStats {
+  gold: number
+  hp: number
+  maxHp: number
+  attack: number
+  defense: number
+  inventory: (ItemData | null)[] // 5 slots, null = empty
+  overflowItem: ItemData | null // Special overflow slot
+}
+
 export interface Tile {
   x: number
   y: number
@@ -26,6 +53,8 @@ export interface Tile {
   contentVisible: boolean // Whether content is known before reveal
   annotated: boolean // Player annotation (gray slash)
   revealedBy?: TileOwner // Who revealed this tile (determines adjacency display)
+  itemData?: ItemData // Present if content is Item
+  monsterData?: MonsterData // Present if content is Monster
 }
 
 export interface Board {
@@ -43,6 +72,12 @@ export interface RunState {
   maxLevel: number
   hp: number
   maxHp: number
+  // Player combat and inventory stats
+  gold: number
+  attack: number
+  defense: number
+  inventory: (ItemData | null)[] // 5 slots, null = empty
+  overflowItem: ItemData | null // Special overflow slot
 }
 
 export interface GameState {

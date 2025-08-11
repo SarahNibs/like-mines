@@ -1,0 +1,9 @@
+Implement or TODOify these items, then organize and format this doc.
+
+GOLD COIN: gold coin icon, grants +1 gold on pickup immediately. Most common item by far. No tile owner preference.
+CRYSTAL BALL: crystal ball icon, when used will reveal one of the player's unrevealed tiles at random, including adjacency info. Preferentially found on neutral tiles.
+BEAR TRAP: bear trap icon, deals 1 HP damage to player on "pickup" immediately. Preferentially found on player's tiles.
+DETECTOR: radar ping icon, when used allows you to click on any tile and put adjacency info on it for your own tiles, including the tile you clicked. UI needs to indicate you're currently in "pick a tile to detect" mode. UI needs to keep that adjacency info even after tile is revealed (if it started unrevealed). No tile owner preference.
+TRANSMUTE: magic wand icon, when used allows you to turn any unrevealed tile into one of your own tiles. No tile owner preference.
+REWIND: undo icon, when present in inventory and you try to reveal a tile that's not yours or a tile with a monster on it, prompts you "are you sure?" and uses up the item if you decide to not go ahead with the reveal. Not usable by clicking, only in response.
+FIRST AID: red cross icon, on pickup if you have 5+ gold you lose 5 gold and gain 10 HP immediately.

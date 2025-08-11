@@ -11,6 +11,8 @@ const renderer = new GameRenderer(canvas)
 // UI elements
 const levelInfoEl = document.getElementById('level-info')!
 const hpInfoEl = document.getElementById('hp-info')!
+const goldInfoEl = document.getElementById('gold-info')!
+const statsInfoEl = document.getElementById('stats-info')!
 const turnInfoEl = document.getElementById('turn-info')!
 const winStatusEl = document.getElementById('win-status')!
 const playerTilesEl = document.getElementById('player-tiles')!
@@ -19,6 +21,9 @@ const clueHintEl = document.getElementById('clue-hint')!
 const handAEl = document.getElementById('hand-a')!
 const handBEl = document.getElementById('hand-b')!
 const endTurnBtn = document.getElementById('end-turn')!
+const inventoryEl = document.getElementById('inventory')!
+const boardOverlay = document.getElementById('board-overlay')!
+const overlayMessage = document.getElementById('overlay-message')!
 
 // Update UI with current game state
 function updateUI() {
@@ -28,6 +33,8 @@ function updateUI() {
   // Update run progress
   levelInfoEl.textContent = `Level ${state.run.currentLevel} / ${state.run.maxLevel}`
   hpInfoEl.textContent = `HP: ${state.run.hp} / ${state.run.maxHp}`
+  goldInfoEl.textContent = `Gold: ${state.run.gold}`
+  statsInfoEl.textContent = `Attack: ${state.run.attack} | Defense: ${state.run.defense}`
   
   // Update turn info
   if (state.gameStatus === 'run-complete') {
@@ -46,14 +53,28 @@ function updateUI() {
   if (state.gameStatus === 'run-complete') {
     winStatusEl.textContent = '🏆 Victory!'
     winStatusEl.style.color = '#ffa500'
+    boardOverlay.style.display = 'none'
+  } else if (state.gameStatus === 'player-died') {
+    winStatusEl.textContent = '💀 You Died!'
+    winStatusEl.style.color = '#7c4a4a'
+    // Show overlay message
+    overlayMessage.textContent = '💀 You Died!'
+    boardOverlay.style.display = 'flex'
   } else if (state.boardStatus === 'won') {
     winStatusEl.textContent = '🎉 Advancing...'
     winStatusEl.style.color = '#4a7c59'
+    // Show overlay message
+    overlayMessage.textContent = '🎉 Board Cleared!'
+    boardOverlay.style.display = 'flex'
   } else if (state.boardStatus === 'lost') {
     winStatusEl.textContent = '💀 Run Ends!'
     winStatusEl.style.color = '#7c4a4a'
+    // Show overlay message
+    overlayMessage.textContent = '💀 Board Lost!'
+    boardOverlay.style.display = 'flex'
   } else {
     winStatusEl.textContent = ''
+    boardOverlay.style.display = 'none'
   }
   
   // Update tile counts
@@ -66,6 +87,9 @@ function updateUI() {
   } else {
     endTurnBtn.style.display = 'none'
   }
+  
+  // Update inventory
+  updateInventory(state)
   
   // Update clues only when necessary
   let annotatedCount = 0
@@ -110,6 +134,51 @@ function updateHoverHighlights() {
     // No highlights
     console.log('Clearing all highlights')
     renderer.clearHighlights()
+  }
+}
+
+// Update inventory display
+function updateInventory(state: any) {
+  // Add null checks for DOM elements
+  if (!inventoryEl) {
+    console.error('Inventory element not found')
+    return
+  }
+  
+  inventoryEl.innerHTML = ''
+  
+  // Create inventory slots
+  for (let i = 0; i < 5; i++) {
+    const slot = document.createElement('div')
+    slot.className = 'inventory-slot'
+    const item = state.run.inventory[i]
+    
+    if (item) {
+      slot.textContent = item.icon
+      slot.title = `${item.name}: ${item.description}`
+      slot.addEventListener('click', () => gameStore.useInventoryItem(i))
+    } else {
+      slot.classList.add('empty')
+    }
+    
+    inventoryEl.appendChild(slot)
+  }
+  
+  // Show overflow if present
+  const overflowEl = document.getElementById('overflow-item')
+  const overflowSlot = document.getElementById('overflow-slot')
+  
+  if (overflowEl && overflowSlot) {
+    if (state.run.overflowItem) {
+      overflowEl.style.display = 'block'
+      overflowSlot.textContent = state.run.overflowItem.icon
+      overflowSlot.title = `${state.run.overflowItem.name}: ${state.run.overflowItem.description}`
+      // Add glow effect to inventory
+      inventoryEl.style.boxShadow = '0 0 10px #ff6b6b'
+    } else {
+      overflowEl.style.display = 'none'
+      inventoryEl.style.boxShadow = 'none'
+    }
   }
 }
 
@@ -162,10 +231,13 @@ function updateClues(state: any) {
     handAGrid.style.borderRadius = '2px'
     handAGrid.style.background = '#2a2a2a'
     
-    clue.handA.tiles.forEach((tile: any) => {
+    clue.handA.tiles.forEach((tile: any, tileIndex: number) => {
       const boardTile = state.board.tiles[tile.y][tile.x]
       const tileEl = document.createElement('div')
       tileEl.className = 'clue-tile'
+      tileEl.setAttribute('data-clue', clueIndex.toString())
+      tileEl.setAttribute('data-hand', 'A')
+      tileEl.setAttribute('data-tile', tileIndex.toString())
       tileEl.style.width = '18px'
       tileEl.style.height = '18px'
       tileEl.style.background = getTileDisplayColor(boardTile)
@@ -274,10 +346,13 @@ function updateClues(state: any) {
     handBGrid.style.borderRadius = '2px'
     handBGrid.style.background = '#2a2a2a'
     
-    clue.handB.tiles.forEach((tile: any) => {
+    clue.handB.tiles.forEach((tile: any, tileIndex: number) => {
       const boardTile = state.board.tiles[tile.y][tile.x]
       const tileEl = document.createElement('div')
       tileEl.className = 'clue-tile'
+      tileEl.setAttribute('data-clue', clueIndex.toString())
+      tileEl.setAttribute('data-hand', 'B')
+      tileEl.setAttribute('data-tile', tileIndex.toString())
       tileEl.style.width = '18px'
       tileEl.style.height = '18px'
       tileEl.style.background = getTileDisplayColor(boardTile)
@@ -383,7 +458,7 @@ function updateClues(state: any) {
   })
   
   // Replace the hands display with our new all-clues container
-  const cluesStatusContent = document.querySelector('#right-panel .status:nth-child(2) .status-content')
+  const cluesStatusContent = document.querySelector('#right-panel .status:nth-child(3) .status-content')
   if (cluesStatusContent) {
     cluesStatusContent.innerHTML = ''
     cluesStatusContent.appendChild(allCluesContainer)
@@ -423,10 +498,10 @@ canvas.addEventListener('click', (event) => {
     const success = gameStore.revealTileAt(tilePos.x, tilePos.y)
     console.log('Reveal success:', success)
     
-    // If still player's turn after reveal, don't clear highlights
+    // Only clear highlights if turn actually changes
     const newState = gameStore.getState()
-    if (!success || newState.currentTurn !== 'player' || !wasPlayerTurn) {
-      // Clear persistent highlights when clicking to reveal and turn changes
+    if (success && wasPlayerTurn && newState.currentTurn !== 'player') {
+      // Clear highlights only when turn switches from player to AI
       currentHoverTiles = null
       persistentHoverTiles = null
       renderer.clearAllHighlights()
@@ -459,6 +534,64 @@ canvas.addEventListener('contextmenu', (event) => {
   }
 })
 
+// Mouse hover handling for board tiles to highlight corresponding clue tiles
+canvas.addEventListener('mousemove', (event) => {
+  const rect = canvas.getBoundingClientRect()
+  const mouseX = event.clientX - rect.left
+  const mouseY = event.clientY - rect.top
+  
+  const state = gameStore.getState()
+  const tilePos = renderer.getTileFromCoordinates(state.board, mouseX, mouseY)
+  
+  if (tilePos) {
+    highlightCluetilesForBoardTile(tilePos.x, tilePos.y)
+  } else {
+    clearClueTileHighlights()
+  }
+})
+
+canvas.addEventListener('mouseleave', () => {
+  clearClueTileHighlights()
+})
+
+// Function to highlight clue tiles that correspond to a board tile
+function highlightCluetilesForBoardTile(boardX: number, boardY: number) {
+  const state = gameStore.getState()
+  
+  // Find all clue tiles that match this board position
+  const matchingClueElements: HTMLElement[] = []
+  
+  state.clues.forEach((clue: any, clueIndex: number) => {
+    // Check hand A
+    clue.handA.tiles.forEach((tile: any, tileIndex: number) => {
+      if (tile.x === boardX && tile.y === boardY) {
+        const clueElement = document.querySelector(`.clue-tile[data-clue="${clueIndex}"][data-hand="A"][data-tile="${tileIndex}"]`)
+        if (clueElement) matchingClueElements.push(clueElement as HTMLElement)
+      }
+    })
+    
+    // Check hand B  
+    clue.handB.tiles.forEach((tile: any, tileIndex: number) => {
+      if (tile.x === boardX && tile.y === boardY) {
+        const clueElement = document.querySelector(`.clue-tile[data-clue="${clueIndex}"][data-hand="B"][data-tile="${tileIndex}"]`)
+        if (clueElement) matchingClueElements.push(clueElement as HTMLElement)
+      }
+    })
+  })
+  
+  // Clear previous highlights and add new ones
+  clearClueTileHighlights()
+  matchingClueElements.forEach(element => {
+    element.classList.add('board-hover-highlight')
+  })
+}
+
+function clearClueTileHighlights() {
+  document.querySelectorAll('.board-hover-highlight').forEach(element => {
+    element.classList.remove('board-hover-highlight')
+  })
+}
+
 // Debug button handlers
 document.getElementById('reveal-all-player')!.addEventListener('click', () => {
   console.log('Revealing all player tiles...')
@@ -484,6 +617,12 @@ document.getElementById('reset-game')!.addEventListener('click', () => {
 endTurnBtn.addEventListener('click', () => {
   console.log('Ending turn manually...')
   gameStore.endTurn()
+})
+
+// Start New Run button handler
+document.getElementById('start-new-run')!.addEventListener('click', () => {
+  console.log('Starting new run...')
+  gameStore.resetGame()
 })
 
 // General click handler to clear highlights when clicking outside clue areas
