@@ -31,6 +31,10 @@ const rewindCancelBtn = document.getElementById('rewind-cancel')!
 const shopWidget = document.getElementById('shop-widget')!
 const shopItemsEl = document.getElementById('shop-items')!
 const shopCloseBtn = document.getElementById('shop-close')!
+const discardWidget = document.getElementById('discard-widget')!
+const discardMessage = document.getElementById('discard-message')!
+const discardConfirmBtn = document.getElementById('discard-confirm')!
+const discardCancelBtn = document.getElementById('discard-cancel')!
 
 // Detector hover tooltip element
 let detectorTooltip: HTMLElement | null = null
@@ -152,6 +156,9 @@ function updateUI() {
   // Update shop widget
   updateShopWidget(state)
   
+  // Update discard widget
+  updateDiscardWidget(state)
+  
   // Update clues only when necessary
   let annotatedCount = 0
   for (let y = 0; y < state.board.height; y++) {
@@ -220,9 +227,7 @@ function updateInventory(state: any) {
       slot.addEventListener('click', () => gameStore.useInventoryItem(i))
       slot.addEventListener('contextmenu', (e) => {
         e.preventDefault()
-        if (confirm(`Discard ${item.name}?`)) {
-          gameStore.discardInventoryItem(i)
-        }
+        gameStore.showDiscardConfirmation(i)
       })
     } else {
       slot.classList.add('empty')
@@ -302,6 +307,16 @@ function updateShopWidget(state: any) {
     })
   } else {
     shopWidget.style.display = 'none'
+  }
+}
+
+// Update discard widget display
+function updateDiscardWidget(state: any) {
+  if (state.pendingDiscard) {
+    discardWidget.style.display = 'block'
+    discardMessage.textContent = `Discard "${state.pendingDiscard.itemName}"? This action cannot be undone.`
+  } else {
+    discardWidget.style.display = 'none'
   }
 }
 
@@ -839,6 +854,17 @@ rewindCancelBtn.addEventListener('click', () => {
 shopCloseBtn.addEventListener('click', () => {
   console.log('Closing shop')
   gameStore.closeShop()
+})
+
+// Discard widget button handlers
+discardConfirmBtn.addEventListener('click', () => {
+  console.log('Player confirmed item discard')
+  gameStore.confirmDiscard()
+})
+
+discardCancelBtn.addEventListener('click', () => {
+  console.log('Player cancelled item discard')
+  gameStore.cancelDiscard()
 })
 
 // General click handler to clear highlights when clicking outside clue areas

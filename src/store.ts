@@ -668,7 +668,39 @@ class GameStore {
     }
   }
 
-  // Discard item from inventory
+  // Show discard confirmation widget
+  showDiscardConfirmation(index: number): void {
+    const item = this.state.run.inventory[index]
+    if (!item) return
+    
+    this.setState({
+      pendingDiscard: {
+        itemIndex: index,
+        itemName: item.name
+      }
+    })
+  }
+
+  // Confirm discard from widget
+  confirmDiscard(): void {
+    if (!this.state.pendingDiscard) return
+    
+    const { itemIndex, itemName } = this.state.pendingDiscard
+    console.log(`Discarded ${itemName}`)
+    removeItemFromInventory(this.state.run, itemIndex)
+    
+    this.setState({ 
+      run: { ...this.state.run },
+      pendingDiscard: null
+    })
+  }
+
+  // Cancel discard from widget
+  cancelDiscard(): void {
+    this.setState({ pendingDiscard: null })
+  }
+
+  // Discard item from inventory (legacy method for direct discard)
   discardInventoryItem(index: number): void {
     const item = this.state.run.inventory[index]
     if (!item) return

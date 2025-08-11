@@ -99,6 +99,10 @@ export interface GameState {
     rewindIndex: number
     description: string
   } | null // Pending rewind decision data
+  pendingDiscard?: {
+    itemIndex: number
+    itemName: string
+  } | null // Pending discard confirmation data
 }
 
 // Helper function to get tile at position

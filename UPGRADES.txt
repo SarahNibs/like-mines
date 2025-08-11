@@ -1,0 +1,7 @@
+ATTACK: Permanently add +2 to your attack. Sword icon. Repeatable.
+DEFENSE: Permanently add +1 to your defense. Shield icon. Repeatable.
+HEALTHY: Permanently add +25 to your max hp (not current HP). Chart-go-up icon. Repeatable.
+INCOME: Permanently add +$1 to your "loot" stat, which is how much gold you gain every time your reveal an opponent's tile or fight a monster. Dollar sign icon. Repeatable.
+QUICK: At the very beginning of every board, one of your tiles will be selected and revealed at random. This happens before clues are generated. Lightning bolt icon.
+RICH: When you defeat a monster, all adjacent unrevealed tiles that don't already have an icon gain a +1 gold item. Piggy bank icon.
+WISDOM: At the very beginning of every board, one tile at random will receive the effects of a detector gadget. Folded praying hands icon.
