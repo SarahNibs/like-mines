@@ -37,25 +37,25 @@ export const CRYSTAL_BALL: ItemData = {
 export const DETECTOR: ItemData = {
   id: 'detector',
   name: 'Detector',
-  description: 'TODO: Should allow clicking tiles for adjacency info. Gives +2 gold for now.',
+  description: 'Click any unrevealed tile to see how many adjacent tiles belong to each player',
   icon: '📡',
-  immediate: true
+  immediate: false
 }
 
 export const TRANSMUTE: ItemData = {
   id: 'transmute', 
   name: 'Transmute',
-  description: 'TODO: Should convert unrevealed tile to player tile. Gives +2 gold for now.',
+  description: 'Turn any unrevealed tile into your own tile',
   icon: '🪄',
-  immediate: true
+  immediate: false
 }
 
 export const REWIND: ItemData = {
   id: 'rewind',
   name: 'Rewind',
-  description: 'TODO: Should prompt before revealing dangerous tiles. Gives +2 gold for now.',
+  description: 'Prevents dangerous reveals - prompts before revealing enemy tiles or monsters',
   icon: '↶',
-  immediate: true
+  immediate: false
 }
 
 // All available items
@@ -64,7 +64,7 @@ export const ALL_ITEMS: ItemData[] = [
   CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
 ]
 
-// Sample monsters with scaling difficulty
+// Sample monsters - no scaling, fixed stats
 export const createMonster = (level: number): MonsterData => {
   const monsters = [
     {
@@ -101,19 +101,15 @@ export const createMonster = (level: number): MonsterData => {
     }
   ]
   
-  // Pick monster based on level, with some scaling
+  // Pick monster based on level, no scaling
   const baseMonster = monsters[Math.min(Math.floor(level / 3), monsters.length - 1)]
-  const levelMultiplier = 1 + (level - 1) * 0.1 // +10% stats per level
   
-  const scaledMonster = {
+  const monster = {
     ...baseMonster,
-    id: `${baseMonster.id}-${level}`,
-    attack: Math.floor(baseMonster.attack * levelMultiplier),
-    defense: Math.floor(baseMonster.defense * levelMultiplier),
-    hp: Math.floor(baseMonster.hp * levelMultiplier)
+    id: `${baseMonster.id}-${level}`
   }
   
-  console.log(`Created monster for level ${level}: ${scaledMonster.name} (${scaledMonster.attack} atk, ${scaledMonster.defense} def, ${scaledMonster.hp} hp), multiplier: ${levelMultiplier}`)
+  console.log(`Created monster for level ${level}: ${monster.name} (${monster.attack} atk, ${monster.defense} def, ${monster.hp} hp)`)
   
-  return scaledMonster
+  return monster
 }

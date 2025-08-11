@@ -55,6 +55,11 @@ class GameStore {
       return false
     }
     
+    // Check for Rewind protection on dangerous tiles
+    if (this.checkRewindProtection(tile)) {
+      return false // Player chose not to reveal
+    }
+    
     const success = revealTile(this.state.board, x, y, 'player')
     if (success) {
       const newBoardStatus = checkBoardStatus(this.state.board)
@@ -239,9 +244,15 @@ class GameStore {
     const item = this.state.run.inventory[index]
     if (!item) return
     
-    // Handle crystal ball specially
+    // Handle special items
     if (item.id === 'crystal-ball') {
       this.useCrystalBall()
+    } else if (item.id === 'transmute') {
+      this.startTransmuteMode(index)
+      return // Don't consume the item yet
+    } else if (item.id === 'detector') {
+      this.startDetectorMode(index)
+      return // Don't consume the item yet
     } else {
       const message = applyItemEffect(this.state.run, item)
       console.log(message)
@@ -298,6 +309,278 @@ class GameStore {
         } else if (newBoardStatus === 'lost') {
           this.handleBoardLost()
         }
+      }
+    }
+  }
+
+  // Start transmute mode
+  private startTransmuteMode(itemIndex: number): void {
+    console.log('Transmute activated! Click any unrevealed tile to convert it to your tile.')
+    this.setState({ 
+      transmuteMode: true,
+      transmuteItemIndex: itemIndex // Store which inventory slot to consume
+    })
+  }
+
+  // Handle transmute tile click
+  transmuteTileAt(x: number, y: number): boolean {
+    if (!this.state.transmuteMode) return false
+    
+    const tile = getTileAt(this.state.board, x, y)
+    if (!tile || tile.revealed) {
+      console.log('Can only transmute unrevealed tiles!')
+      // Still consume the item even on invalid attempts
+      const itemIndex = (this.state as any).transmuteItemIndex
+      removeItemFromInventory(this.state.run, itemIndex)
+      this.setState({
+        run: { ...this.state.run },
+        transmuteMode: false,
+        transmuteItemIndex: undefined
+      })
+      return false
+    }
+    
+    // Always consume the transmute item, regardless of success/failure
+    const itemIndex = (this.state as any).transmuteItemIndex
+    removeItemFromInventory(this.state.run, itemIndex)
+    
+    if (tile.owner === 'player') {
+      console.log('Tile is already yours! Transmute consumed anyway.')
+      this.setState({
+        run: { ...this.state.run },
+        transmuteMode: false,
+        transmuteItemIndex: undefined
+      })
+      return false
+    }
+    
+    // Convert tile to player ownership
+    const oldOwner = tile.owner
+    tile.owner = 'player'
+    
+    // Update board tile counts
+    if (oldOwner === 'opponent') {
+      this.state.board.opponentTilesTotal--
+    }
+    this.state.board.playerTilesTotal++
+    
+    console.log(`Transmuted ${oldOwner} tile at (${x}, ${y}) to player tile!`)
+    
+    // Update any existing detector scans since tile ownership changed
+    this.updateDetectorScans()
+    
+    // Exit transmute mode (item already consumed above)
+    this.setState({
+      board: { ...this.state.board },
+      run: { ...this.state.run },
+      transmuteMode: false,
+      transmuteItemIndex: undefined
+    })
+    
+    return true
+  }
+
+  // Cancel transmute mode
+  cancelTransmute(): void {
+    console.log('Transmute cancelled.')
+    this.setState({
+      transmuteMode: false,
+      transmuteItemIndex: undefined
+    })
+  }
+
+  // Start detector mode
+  private startDetectorMode(itemIndex: number): void {
+    console.log('Detector activated! Click any unrevealed tile to see adjacent tile info.')
+    this.setState({ 
+      detectorMode: true,
+      detectorItemIndex: itemIndex // Store which inventory slot to consume
+    })
+  }
+
+  // Handle detector tile click
+  detectTileAt(x: number, y: number): boolean {
+    if (!this.state.detectorMode) return false
+    
+    const tile = getTileAt(this.state.board, x, y)
+    if (!tile) {
+      console.log('Invalid tile position!')
+      return false
+    }
+    
+    // Count all tiles in 3x3 area including the middle tile
+    let playerAdjacent = 0
+    let opponentAdjacent = 0
+    let neutralAdjacent = 0
+    
+    // Check all 9 positions in 3x3 area (including center)
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const adjTile = getTileAt(this.state.board, x + dx, y + dy)
+        if (adjTile) {
+          if (adjTile.owner === 'player') playerAdjacent++
+          else if (adjTile.owner === 'opponent') opponentAdjacent++
+          else if (adjTile.owner === 'neutral') neutralAdjacent++
+        }
+      }
+    }
+    
+    // Store scan results on the tile
+    tile.detectorScan = {
+      playerAdjacent,
+      opponentAdjacent,
+      neutralAdjacent
+    }
+    
+    console.log(`Detector scan at (${x}, ${y}): ${playerAdjacent} player, ${opponentAdjacent} opponent, ${neutralAdjacent} neutral adjacent tiles`)
+    
+    // Consume the detector item and exit detector mode
+    const itemIndex = (this.state as any).detectorItemIndex
+    removeItemFromInventory(this.state.run, itemIndex)
+    
+    this.setState({
+      board: { ...this.state.board },
+      run: { ...this.state.run },
+      detectorMode: false,
+      detectorItemIndex: undefined
+    })
+    
+    return true
+  }
+
+  // Cancel detector mode
+  cancelDetector(): void {
+    console.log('Detector cancelled.')
+    this.setState({
+      detectorMode: false,
+      detectorItemIndex: undefined
+    })
+  }
+
+  // Update all existing detector scan results (called when tile ownership changes)
+  private updateDetectorScans(): void {
+    const board = this.state.board
+    
+    // Find all tiles with detector scans and update their results
+    for (let y = 0; y < board.height; y++) {
+      for (let x = 0; x < board.width; x++) {
+        const tile = board.tiles[y][x]
+        
+        if (tile.detectorScan) {
+          // Recalculate scan for this tile
+          let playerAdjacent = 0
+          let opponentAdjacent = 0
+          let neutralAdjacent = 0
+          
+          // Check all 9 positions in 3x3 area (including center)
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const adjTile = getTileAt(board, x + dx, y + dy)
+              if (adjTile) {
+                if (adjTile.owner === 'player') playerAdjacent++
+                else if (adjTile.owner === 'opponent') opponentAdjacent++
+                else if (adjTile.owner === 'neutral') neutralAdjacent++
+              }
+            }
+          }
+          
+          // Update the scan results
+          tile.detectorScan = {
+            playerAdjacent,
+            opponentAdjacent,
+            neutralAdjacent
+          }
+        }
+      }
+    }
+  }
+
+  // Check if Rewind should protect against revealing dangerous tiles
+  private checkRewindProtection(tile: any): boolean {
+    // Check if player has Rewind in inventory
+    const rewindIndex = this.state.run.inventory.findIndex(item => item?.id === 'rewind')
+    if (rewindIndex === -1) {
+      return false // No Rewind, no protection
+    }
+    
+    // Check if tile is dangerous (not player's tile OR has monster content)
+    const isDangerous = tile.owner !== 'player' || tile.content === TileContent.Monster
+    
+    if (!isDangerous) {
+      return false // Not dangerous, no need for protection
+    }
+    
+    // Store pending rewind data and show widget
+    const tileDescription = tile.owner !== 'player' 
+      ? `${tile.owner} tile` 
+      : tile.content === TileContent.Monster && tile.monsterData
+        ? `monster (${tile.monsterData.name})`
+        : 'dangerous tile'
+    
+    this.setState({
+      pendingRewind: {
+        tile,
+        rewindIndex,
+        description: tileDescription
+      }
+    })
+    
+    return true // Always prevent the reveal initially, let widget handle the decision
+  }
+
+  // Handle rewind decision from widget
+  proceedWithRewind(): void {
+    if (!this.state.pendingRewind) return
+    
+    // Consume the rewind item  
+    removeItemFromInventory(this.state.run, this.state.pendingRewind.rewindIndex)
+    console.log('Rewind activated! Dangerous reveal prevented.')
+    
+    this.setState({
+      run: { ...this.state.run },
+      pendingRewind: null
+    })
+  }
+
+  proceedWithReveal(): void {
+    if (!this.state.pendingRewind) return
+    
+    const tile = this.state.pendingRewind.tile
+    
+    // Clear pending rewind and proceed with reveal
+    this.setState({ pendingRewind: null })
+    
+    // Manually trigger the reveal that was blocked
+    const success = revealTile(this.state.board, tile.x, tile.y, 'player')
+    if (success) {
+      const newBoardStatus = checkBoardStatus(this.state.board)
+      const isPlayerTile = tile.owner === 'player'
+      
+      // Handle tile content after checking board status
+      this.handleTileContent(tile)
+      
+      // Check if player died after handling content
+      if (this.state.gameStatus === 'player-died') {
+        return // Exit early if player died
+      }
+      
+      // Player continues turn if they revealed their own tile, otherwise switch to AI
+      const newTurn = (newBoardStatus === 'in-progress' && !isPlayerTile) ? 'opponent' : 'player'
+      
+      this.setState({
+        board: { ...this.state.board },
+        boardStatus: newBoardStatus,
+        currentTurn: newTurn
+      })
+      
+      // Handle board completion
+      if (newBoardStatus === 'won') {
+        this.handleBoardWon()
+      } else if (newBoardStatus === 'lost') {
+        this.handleBoardLost()
+      } else if (newTurn === 'opponent') {
+        // Trigger AI turn after a short delay (only if turn actually switched)
+        this.scheduleAITurn()
       }
     }
   }

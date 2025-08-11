@@ -55,6 +55,11 @@ export interface Tile {
   revealedBy?: TileOwner // Who revealed this tile (determines adjacency display)
   itemData?: ItemData // Present if content is Item
   monsterData?: MonsterData // Present if content is Monster
+  detectorScan?: {
+    playerAdjacent: number
+    opponentAdjacent: number
+    neutralAdjacent: number
+  } // Detector scan results
 }
 
 export interface Board {
@@ -83,10 +88,17 @@ export interface RunState {
 export interface GameState {
   board: Board
   currentTurn: 'player' | 'opponent'
-  gameStatus: 'playing' | 'player-won' | 'opponent-won' | 'run-complete'
+  gameStatus: 'playing' | 'player-won' | 'opponent-won' | 'run-complete' | 'player-died'
   boardStatus: 'in-progress' | 'won' | 'lost'
   clues: import('./clues').ProbabilisticClue[] // Array of accumulated clues
   run: RunState
+  transmuteMode: boolean // Whether player is in transmute tile selection mode
+  detectorMode: boolean // Whether player is in detector tile selection mode
+  pendingRewind?: {
+    tile: Tile
+    rewindIndex: number
+    description: string
+  } | null // Pending rewind decision data
 }
 
 // Helper function to get tile at position

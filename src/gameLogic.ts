@@ -1,6 +1,7 @@
 import { Board, Tile, TileOwner, TileContent, GameState, RunState, getTileAt, getTilesByOwner, ItemData, MonsterData } from './types'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
+import { DETECTOR, TRANSMUTE } from './items'
 
 // Get adjacent tile positions (8-directional)
 function getAdjacentPositions(x: number, y: number): Array<{x: number, y: number}> {
@@ -74,7 +75,7 @@ export function createInitialRunState(): RunState {
     gold: 0,
     attack: 5, // Starting attack power
     defense: 0, // Starting defense
-    inventory: [null, null, null, null, null], // 5 empty slots
+    inventory: [DETECTOR, TRANSMUTE, null, null, null], // Start with Detector and Transmute for testing
     overflowItem: null
   }
 }
@@ -92,7 +93,9 @@ export function createInitialGameState(): GameState {
     gameStatus: 'playing',
     boardStatus,
     clues: [initialClue], // Start with one clue
-    run
+    run,
+    transmuteMode: false,
+    detectorMode: false
   }
 }
 
@@ -117,6 +120,8 @@ export function progressToNextLevel(currentState: GameState): GameState {
     currentTurn: 'player',
     boardStatus: 'in-progress',
     clues: [initialClue], // Reset clues for new board
+    transmuteMode: false, // Reset transmute mode for new board
+    detectorMode: false, // Reset detector mode for new board
     run: {
       ...currentState.run,
       currentLevel: newLevel
@@ -209,12 +214,17 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       // This shouldn't be called since crystal ball is not immediate anymore
       return 'Crystal ball effect should be handled in store!'
       
-    // Complex items - give gold for now
-    case 'detector': 
     case 'transmute':
+      // This shouldn't be called since transmute is not immediate anymore
+      return 'Transmute effect should be handled in store!'
+      
     case 'rewind':
-      runState.gold += 2
-      return `Found ${item.name}! Complex item not implemented yet, gained 2 gold instead.`
+      // This shouldn't be called since rewind is not immediate anymore
+      return 'Rewind effect should be handled in store!'
+      
+    case 'detector':
+      // This shouldn't be called since detector is not immediate anymore
+      return 'Detector effect should be handled in store!'
       
     default:
       return `Unknown item: ${item.name}`

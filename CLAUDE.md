@@ -92,3 +92,8 @@ Contents can be visible (known) or hidden, influencing strategic decisions.
 - **Procedural generation** with configurable difficulty profiles
 - **Tactical decision-making** through visible intents and known contents
 - **Turn-based only** (no real-time elements)
+
+## UI/UX Guidelines
+
+- **NEVER use browser popups** (alert(), confirm(), prompt()) - Always use dedicated UI widgets or inline displays instead
+- **Prefer persistent information** - Data should remain visible for strategic reference, not disappear after showing once

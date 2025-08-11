@@ -24,6 +24,49 @@ const endTurnBtn = document.getElementById('end-turn')!
 const inventoryEl = document.getElementById('inventory')!
 const boardOverlay = document.getElementById('board-overlay')!
 const overlayMessage = document.getElementById('overlay-message')!
+const rewindWidget = document.getElementById('rewind-widget')!
+const rewindMessage = document.getElementById('rewind-message')!
+const rewindProceedBtn = document.getElementById('rewind-proceed')!
+const rewindCancelBtn = document.getElementById('rewind-cancel')!
+
+// Detector hover tooltip element
+let detectorTooltip: HTMLElement | null = null
+
+// Create detector tooltip if it doesn't exist
+function createDetectorTooltip(): HTMLElement {
+  if (!detectorTooltip) {
+    detectorTooltip = document.createElement('div')
+    detectorTooltip.style.position = 'absolute'
+    detectorTooltip.style.background = 'rgba(0, 0, 0, 0.9)'
+    detectorTooltip.style.color = '#fff'
+    detectorTooltip.style.padding = '8px'
+    detectorTooltip.style.borderRadius = '4px'
+    detectorTooltip.style.fontSize = '12px'
+    detectorTooltip.style.fontFamily = 'Courier New, monospace'
+    detectorTooltip.style.pointerEvents = 'none'
+    detectorTooltip.style.zIndex = '1000'
+    detectorTooltip.style.display = 'none'
+    detectorTooltip.style.border = '1px solid #666'
+    document.body.appendChild(detectorTooltip)
+  }
+  return detectorTooltip
+}
+
+// Show detector tooltip
+function showDetectorTooltip(x: number, y: number, playerCount: number, opponentCount: number, neutralCount: number): void {
+  const tooltip = createDetectorTooltip()
+  tooltip.innerHTML = `Detector Scan (3x3 area):<br/>Player tiles: ${playerCount}<br/>Opponent tiles: ${opponentCount}<br/>Neutral tiles: ${neutralCount}`
+  tooltip.style.left = `${x + 10}px`
+  tooltip.style.top = `${y - 10}px`
+  tooltip.style.display = 'block'
+}
+
+// Hide detector tooltip
+function hideDetectorTooltip(): void {
+  if (detectorTooltip) {
+    detectorTooltip.style.display = 'none'
+  }
+}
 
 // Update UI with current game state
 function updateUI() {
@@ -40,13 +83,22 @@ function updateUI() {
   if (state.gameStatus === 'run-complete') {
     turnInfoEl.textContent = 'Victory!'
   } else if (state.gameStatus === 'playing') {
-    if (state.boardStatus === 'in-progress') {
+    if (state.transmuteMode) {
+      turnInfoEl.textContent = '🪄 TRANSMUTE MODE: Click tile to convert'
+      turnInfoEl.style.color = '#ffa500'
+    } else if (state.detectorMode) {
+      turnInfoEl.textContent = '📡 DETECTOR MODE: Click tile to scan'
+      turnInfoEl.style.color = '#00ffff'
+    } else if (state.boardStatus === 'in-progress') {
       turnInfoEl.textContent = state.currentTurn === 'player' ? "Player's Turn" : "AI's Turn"
+      turnInfoEl.style.color = '#ffffff'
     } else {
       turnInfoEl.textContent = 'Board Complete'
+      turnInfoEl.style.color = '#ffffff'
     }
   } else {
     turnInfoEl.textContent = 'Run Over'
+    turnInfoEl.style.color = '#ffffff'
   }
   
   // Update board/run status (check run-complete first)
@@ -90,6 +142,9 @@ function updateUI() {
   
   // Update inventory
   updateInventory(state)
+  
+  // Update rewind widget
+  updateRewindWidget(state)
   
   // Update clues only when necessary
   let annotatedCount = 0
@@ -179,6 +234,16 @@ function updateInventory(state: any) {
       overflowEl.style.display = 'none'
       inventoryEl.style.boxShadow = 'none'
     }
+  }
+}
+
+// Update rewind widget display
+function updateRewindWidget(state: any) {
+  if (state.pendingRewind) {
+    rewindWidget.style.display = 'block'
+    rewindMessage.textContent = `This is a ${state.pendingRewind.description}! Use Rewind to prevent revealing it, or proceed anyway.`
+  } else {
+    rewindWidget.style.display = 'none'
   }
 }
 
@@ -493,6 +558,22 @@ canvas.addEventListener('click', (event) => {
   console.log('Tile position:', tilePos)
   
   if (tilePos) {
+    // Check if we're in transmute mode
+    if (state.transmuteMode) {
+      console.log('Transmute mode: attempting to transmute tile at', tilePos.x, tilePos.y)
+      const success = gameStore.transmuteTileAt(tilePos.x, tilePos.y)
+      console.log('Transmute success:', success)
+      return // Don't do normal tile reveal
+    }
+    
+    // Check if we're in detector mode
+    if (state.detectorMode) {
+      console.log('Detector mode: attempting to detect tile at', tilePos.x, tilePos.y)
+      const success = gameStore.detectTileAt(tilePos.x, tilePos.y)
+      console.log('Detector success:', success)
+      return // Don't do normal tile reveal
+    }
+    
     console.log('Attempting to reveal tile at', tilePos.x, tilePos.y)
     const wasPlayerTurn = state.currentTurn === 'player'
     const success = gameStore.revealTileAt(tilePos.x, tilePos.y)
@@ -516,15 +597,28 @@ canvas.addEventListener('click', (event) => {
   }
 })
 
-// Right-click handling for annotations
+// Right-click handling for annotations and transmute cancel
 canvas.addEventListener('contextmenu', (event) => {
   event.preventDefault() // Prevent context menu
+  
+  const state = gameStore.getState()
+  
+  // Right-click cancels transmute mode
+  if (state.transmuteMode) {
+    gameStore.cancelTransmute()
+    return
+  }
+  
+  // Right-click cancels detector mode
+  if (state.detectorMode) {
+    gameStore.cancelDetector()
+    return
+  }
   
   const rect = canvas.getBoundingClientRect()
   const mouseX = event.clientX - rect.left
   const mouseY = event.clientY - rect.top
   
-  const state = gameStore.getState()
   const tilePos = renderer.getTileFromCoordinates(state.board, mouseX, mouseY)
   
   if (tilePos) {
@@ -534,7 +628,32 @@ canvas.addEventListener('contextmenu', (event) => {
   }
 })
 
-// Mouse hover handling for board tiles to highlight corresponding clue tiles
+// Check if mouse is over detector scan area for a tile
+function isMouseOverDetectorScan(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
+  if (!tile.detectorScan) return false
+  
+  // Calculate tile position
+  const x = padding + tile.x * (tileSize + gap)
+  const y = padding + tile.y * (tileSize + gap)
+  
+  // Calculate detector box position (same logic as renderer)
+  const scanText = `${tile.detectorScan.playerAdjacent}/${tile.detectorScan.opponentAdjacent}/${tile.detectorScan.neutralAdjacent}`
+  
+  // Approximate text width calculation (we'll use a rough estimate)
+  const textWidth = scanText.length * (tileSize * 0.08) // Rough approximation
+  const textHeight = tileSize * 0.12
+  const boxPadding = 2
+  const boxWidth = textWidth + boxPadding * 2
+  const boxHeight = textHeight + boxPadding * 2
+  const boxX = x + tileSize - boxWidth - 2
+  const boxY = y + tileSize - boxHeight - 2
+  
+  // Check if mouse is within the box
+  return mouseX >= boxX && mouseX <= boxX + boxWidth && 
+         mouseY >= boxY && mouseY <= boxY + boxHeight
+}
+
+// Mouse hover handling for board tiles to highlight corresponding clue tiles and show detector tooltips
 canvas.addEventListener('mousemove', (event) => {
   const rect = canvas.getBoundingClientRect()
   const mouseX = event.clientX - rect.left
@@ -542,6 +661,27 @@ canvas.addEventListener('mousemove', (event) => {
   
   const state = gameStore.getState()
   const tilePos = renderer.getTileFromCoordinates(state.board, mouseX, mouseY)
+  
+  // Check for detector scan hover first
+  let detectorHover = false
+  if (tilePos) {
+    const tile = state.board.tiles[tilePos.y][tilePos.x]
+    // Get actual renderer properties
+    const tileSize = renderer.getTileSize()
+    const padding = renderer.getPadding()
+    const gap = renderer.getGap()
+    
+    if (isMouseOverDetectorScan(mouseX, mouseY, tile, tileSize, padding, gap)) {
+      const clientX = event.clientX
+      const clientY = event.clientY
+      showDetectorTooltip(clientX, clientY, tile.detectorScan.playerAdjacent, tile.detectorScan.opponentAdjacent, tile.detectorScan.neutralAdjacent)
+      detectorHover = true
+    }
+  }
+  
+  if (!detectorHover) {
+    hideDetectorTooltip()
+  }
   
   if (tilePos) {
     highlightCluetilesForBoardTile(tilePos.x, tilePos.y)
@@ -552,6 +692,7 @@ canvas.addEventListener('mousemove', (event) => {
 
 canvas.addEventListener('mouseleave', () => {
   clearClueTileHighlights()
+  hideDetectorTooltip()
 })
 
 // Function to highlight clue tiles that correspond to a board tile
@@ -623,6 +764,17 @@ endTurnBtn.addEventListener('click', () => {
 document.getElementById('start-new-run')!.addEventListener('click', () => {
   console.log('Starting new run...')
   gameStore.resetGame()
+})
+
+// Rewind widget button handlers
+rewindProceedBtn.addEventListener('click', () => {
+  console.log('Player chose to proceed with dangerous reveal')
+  gameStore.proceedWithReveal()
+})
+
+rewindCancelBtn.addEventListener('click', () => {
+  console.log('Player chose to use Rewind item')
+  gameStore.proceedWithRewind()
 })
 
 // General click handler to clear highlights when clicking outside clue areas

@@ -150,6 +150,19 @@ export class GameRenderer {
     this.tileSize = Math.min(tileWidthMax, tileHeightMax, 70) // Max 70px tiles
   }
 
+  // Getter methods for renderer properties (for tooltip positioning)
+  getTileSize(): number {
+    return this.tileSize
+  }
+
+  getPadding(): number {
+    return this.padding
+  }
+
+  getGap(): number {
+    return this.gap
+  }
+
   // Get tile position from mouse coordinates
   getTileFromCoordinates(board: Board, mouseX: number, mouseY: number): { x: number; y: number } | null {
     const startX = this.padding
@@ -340,6 +353,47 @@ export class GameRenderer {
         this.ctx.lineTo(x + this.tileSize - 5, y + 5)
         this.ctx.stroke()
       }
+    }
+    
+    // Draw detector scan results if present (overlay that works on both revealed and unrevealed tiles)
+    if (tile.detectorScan) {
+      const scan = tile.detectorScan
+      
+      // Create scan text in bottom right corner
+      const scanText = `${scan.playerAdjacent}/${scan.opponentAdjacent}/${scan.neutralAdjacent}`
+      
+      // Calculate text size and position
+      this.ctx.font = `bold ${Math.floor(this.tileSize * 0.12)}px Courier New`
+      this.ctx.textAlign = 'center'
+      this.ctx.textBaseline = 'middle'
+      
+      const textMetrics = this.ctx.measureText(scanText)
+      const textWidth = textMetrics.width
+      const textHeight = Math.floor(this.tileSize * 0.12)
+      
+      // Position box in bottom right corner with padding
+      const boxPadding = 2
+      const boxWidth = textWidth + boxPadding * 2
+      const boxHeight = textHeight + boxPadding * 2
+      const boxX = x + this.tileSize - boxWidth - 2
+      const boxY = y + this.tileSize - boxHeight - 2
+      
+      // Draw background box
+      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
+      this.ctx.fillRect(boxX, boxY, boxWidth, boxHeight)
+      
+      // Draw border around the box
+      this.ctx.strokeStyle = '#ffffff'
+      this.ctx.lineWidth = 1
+      this.ctx.strokeRect(boxX, boxY, boxWidth, boxHeight)
+      
+      // Draw the text
+      this.ctx.fillStyle = '#ffffff'
+      this.ctx.fillText(scanText, boxX + boxWidth / 2, boxY + boxHeight / 2)
+      
+      // Reset text alignment
+      this.ctx.textAlign = 'center'
+      this.ctx.textBaseline = 'middle'
     }
   }
 
