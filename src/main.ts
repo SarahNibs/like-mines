@@ -9,6 +9,8 @@ console.log('Roguelike Minesweeper - Starting up...')
 const canvas = document.getElementById('game-board') as HTMLCanvasElement
 const renderer = new GameRenderer(canvas)
 
+// Canvas is now fixed size - no need for dynamic resizing
+
 // UI elements
 const levelInfoEl = document.getElementById('level-info')!
 const hpInfoEl = document.getElementById('hp-info')!
@@ -694,7 +696,7 @@ function updateClues(state: any) {
   })
   
   // Replace the hands display with our new all-clues container
-  const cluesStatusContent = document.querySelector('#right-panel .status:nth-child(3) .status-content')
+  const cluesStatusContent = document.querySelector('#right-panel .status:last-child .status-content')
   if (cluesStatusContent) {
     cluesStatusContent.innerHTML = ''
     cluesStatusContent.appendChild(allCluesContainer)
@@ -801,13 +803,13 @@ canvas.addEventListener('contextmenu', (event) => {
 })
 
 // Check if mouse is over a tile with item/upgrade/monster content (specifically over the icon area)
-function isMouseOverTileContent(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
+function isMouseOverTileContent(mouseX: number, mouseY: number, tile: any, tileSize: number, startX: number, startY: number, gap: number): boolean {
   if (!tile.itemData && !tile.upgradeData && !tile.monsterData) return false
   if (tile.revealed) return false // Don't show hover on revealed tiles
   
   // Calculate tile position
-  const x = padding + tile.x * (tileSize + gap)
-  const y = padding + tile.y * (tileSize + gap)
+  const x = startX + tile.x * (tileSize + gap)
+  const y = startY + tile.y * (tileSize + gap)
   
   // Icon is positioned at x + tileSize * 0.25, y + tileSize * 0.25 with font size tileSize * 0.4
   // Create a hover area around the icon position (roughly icon size)
@@ -822,12 +824,12 @@ function isMouseOverTileContent(mouseX: number, mouseY: number, tile: any, tileS
 }
 
 // Check if mouse is over detector scan area for a tile
-function isMouseOverDetectorScan(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
+function isMouseOverDetectorScan(mouseX: number, mouseY: number, tile: any, tileSize: number, startX: number, startY: number, gap: number): boolean {
   if (!tile.detectorScan) return false
   
   // Calculate tile position
-  const x = padding + tile.x * (tileSize + gap)
-  const y = padding + tile.y * (tileSize + gap)
+  const x = startX + tile.x * (tileSize + gap)
+  const y = startY + tile.y * (tileSize + gap)
   
   // Calculate detector box position (same logic as renderer)
   const scanText = `${tile.detectorScan.playerAdjacent}/${tile.detectorScan.opponentAdjacent}/${tile.detectorScan.neutralAdjacent}`
@@ -847,11 +849,15 @@ function isMouseOverDetectorScan(mouseX: number, mouseY: number, tile: any, tile
 }
 
 // Check if mouse is over chain indicator
-function isMouseOverChainIndicator(mouseX: number, mouseY: number, tile: any, tileSize: number, padding: number, gap: number): boolean {
+function isMouseOverChainIndicator(mouseX: number, mouseY: number, tile: any, tileSize: number, startX: number, startY: number, gap: number, board: any): boolean {
   if (!tile.chainData || tile.revealed) return false
   
-  const x = padding + tile.x * (tileSize + gap)
-  const y = padding + tile.y * (tileSize + gap)
+  // Check if the required tile is revealed - if so, chain is no longer active
+  const requiredTile = board.tiles[tile.chainData.requiredTileY][tile.chainData.requiredTileX]
+  if (requiredTile.revealed) return false
+  
+  const x = startX + tile.x * (tileSize + gap)
+  const y = startY + tile.y * (tileSize + gap)
   const chainData = tile.chainData
   
   if (chainData.isBlocked) {
@@ -913,16 +919,17 @@ canvas.addEventListener('mousemove', (event) => {
     const tile = state.board.tiles[tilePos.y][tilePos.x]
     // Get actual renderer properties
     const tileSize = renderer.getTileSize()
-    const padding = renderer.getPadding()
+    const startX = renderer.getStartX()
+    const startY = renderer.getStartY()
     const gap = renderer.getGap()
     
     // Check detector scan first (takes priority)
-    if (isMouseOverDetectorScan(mouseX, mouseY, tile, tileSize, padding, gap)) {
+    if (isMouseOverDetectorScan(mouseX, mouseY, tile, tileSize, startX, startY, gap)) {
       const clientX = event.clientX
       const clientY = event.clientY
       showDetectorTooltip(clientX, clientY, tile.detectorScan.playerAdjacent, tile.detectorScan.opponentAdjacent, tile.detectorScan.neutralAdjacent)
       detectorHover = true
-    } else if (isMouseOverChainIndicator(mouseX, mouseY, tile, tileSize, padding, gap)) {
+    } else if (isMouseOverChainIndicator(mouseX, mouseY, tile, tileSize, startX, startY, gap, state.board)) {
       const clientX = event.clientX
       const clientY = event.clientY
       
@@ -939,7 +946,7 @@ canvas.addEventListener('mousemove', (event) => {
         showItemTooltip(clientX, clientY, title, description)
       }
       itemHover = true
-    } else if (isMouseOverTileContent(mouseX, mouseY, tile, tileSize, padding, gap)) {
+    } else if (isMouseOverTileContent(mouseX, mouseY, tile, tileSize, startX, startY, gap)) {
       const clientX = event.clientX
       const clientY = event.clientY
       

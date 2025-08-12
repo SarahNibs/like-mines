@@ -1,6 +1,6 @@
 import * as ROT from 'rot-js'
 import { Board, Tile, TileOwner, TileContent } from './types'
-import { ALL_ITEMS, SHOP, createMonster } from './items'
+import { ALL_ITEMS, SHOP, createMonster, createGuaranteedNewMonster } from './items'
 import { getAvailableUpgrades } from './upgrades'
 
 export interface BoardConfig {
@@ -28,17 +28,17 @@ export interface SpawnConfig {
 function getSpawnConfigForLevel(level: number): SpawnConfig {
   return {
     chains: { 
-      min: Math.min(Math.floor(level * level * 0.06), level - 1), 
-      max: Math.min(Math.floor(level * level * 0.08), level) 
+      min: Math.min(Math.floor(level * level * 0.07), level - 1), 
+      max: Math.min(Math.floor(level * level * 0.09), level) 
     },
     upgrades: { min: 1, max: 1 }, // Always exactly 1
     monsters: { 
-      min: Math.max(2, Math.floor(Math.sqrt(level) * 2)), 
-      max: Math.max(3, Math.floor(Math.sqrt(level) * 3)) 
+      min: Math.max(2, Math.floor(Math.sqrt(level) * 1.8)), 
+      max: Math.max(3, Math.floor(Math.sqrt(level) * 2.5)) 
     },
     goldCoins: { 
-      min: Math.max(1, Math.floor(level * 0.8)), 
-      max: Math.max(2, Math.floor(level * 1.2)) 
+      min: Math.max(1, Math.floor(level * 0.6)), 
+      max: Math.max(2, Math.floor(level * 1.0)) 
     },
     firstAid: { 
       min: level >= 3 ? 1 : 0, 
@@ -216,7 +216,17 @@ function spawnMonsters(tiles: Tile[][], width: number, height: number, range: {m
   const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
   const emptyTiles = getEmptyTiles(tiles, width, height)
   
-  for (let i = 0; i < count && emptyTiles.length > 0; i++) {
+  // First, place the guaranteed new monster if this level introduces one
+  const guaranteedMonster = createGuaranteedNewMonster(level)
+  let monstersPlaced = 0
+  
+  if (guaranteedMonster && emptyTiles.length > 0) {
+    placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Monster, guaranteedMonster)
+    monstersPlaced++
+  }
+  
+  // Then place remaining monsters randomly
+  for (let i = monstersPlaced; i < count && emptyTiles.length > 0; i++) {
     const monster = createMonster(level)
     placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Monster, monster)
   }

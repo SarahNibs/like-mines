@@ -1,19 +1,14 @@
 import { ItemData, MonsterData } from './types'
 
-// Easy items to implement immediately
+// =============================================================================
+// IMMEDIATE EFFECT ITEMS (used instantly when picked up)
+// =============================================================================
+
 export const GOLD_COIN: ItemData = {
   id: 'gold-coin',
   name: 'Gold Coin',
   description: 'Grants +1 gold',
-  icon: '💰',
-  immediate: true
-}
-
-export const BEAR_TRAP: ItemData = {
-  id: 'bear-trap', 
-  name: 'Bear Trap',
-  description: 'Deals 1 HP damage',
-  icon: '🪤',
+  icon: '🪙',
   immediate: true
 }
 
@@ -25,7 +20,34 @@ export const FIRST_AID: ItemData = {
   immediate: true
 }
 
-// Crystal Ball - reveals random player tile
+export const BAG: ItemData = {
+  id: 'bag',
+  name: 'Bag',
+  description: 'Grants +1 inventory slot permanently',
+  icon: '🎒',
+  immediate: true
+}
+
+export const BEAR_TRAP: ItemData = {
+  id: 'bear-trap', 
+  name: 'Bear Trap',
+  description: 'Deals 1 HP damage',
+  icon: '🪤',
+  immediate: true
+}
+
+export const SHOP: ItemData = {
+  id: 'shop',
+  name: 'Shop',
+  description: 'A traveling merchant with wares to sell',
+  icon: '🏪',
+  immediate: true
+}
+
+// =============================================================================
+// INVENTORY ITEMS (stored and used manually)
+// =============================================================================
+
 export const CRYSTAL_BALL: ItemData = {
   id: 'crystal-ball',
   name: 'Crystal Ball',
@@ -53,69 +75,106 @@ export const TRANSMUTE: ItemData = {
 export const REWIND: ItemData = {
   id: 'rewind',
   name: 'Rewind',
-  description: 'Prevents dangerous reveals - prompts before revealing enemy tiles or monsters',
+  description: 'Prevents dangerous reveals - prompts before revealing enemy tiles or monsters. Hold SHIFT while clicking to auto-bypass.',
   icon: '↶',
   immediate: false
 }
 
-export const SHOP: ItemData = {
-  id: 'shop',
-  name: 'Shop',
-  description: 'A traveling merchant with wares to sell',
-  icon: '🏪',
-  immediate: true
-}
+// =============================================================================
+// ITEM COLLECTIONS
+// =============================================================================
 
 // All available items
 export const ALL_ITEMS: ItemData[] = [
-  GOLD_COIN, BEAR_TRAP, FIRST_AID, 
+  // Immediate items
+  GOLD_COIN, FIRST_AID, BAG, BEAR_TRAP, SHOP,
+  // Inventory items  
   CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
 ]
 
 // Items available for purchase in shops (excludes shop itself, gold, and negative items like bear traps)
 export const SHOP_ITEMS: ItemData[] = [
-  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
+  FIRST_AID, BAG, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
 ]
 
-// Sample monsters - no scaling, fixed stats
+// =============================================================================
+// MONSTERS (introduced every 2 levels)
+// =============================================================================
+
+const MONSTERS = [
+  { // Level 1-2
+    id: 'rat',
+    name: 'Rat',
+    icon: '🐀',
+    attack: 3,
+    defense: 0,
+    hp: 5
+  },
+  { // Level 3-4
+    id: 'spider',
+    name: 'Spider', 
+    icon: '🕷️',
+    attack: 4,
+    defense: 1,
+    hp: 6
+  },
+  { // Level 5-6
+    id: 'goblin',
+    name: 'Goblin',
+    icon: '👹',
+    attack: 5,
+    defense: 1,
+    hp: 8
+  },
+  { // Level 7-8
+    id: 'orc',
+    name: 'Orc',
+    icon: '👺',
+    attack: 6,
+    defense: 2,
+    hp: 12
+  },
+  { // Level 9-10
+    id: 'dragon',
+    name: 'Dragon',
+    icon: '🐉',
+    attack: 15,
+    defense: 2,
+    hp: 25
+  },
+  { // Level 11-12
+    id: 'demon',
+    name: 'Demon',
+    icon: '👿',
+    attack: 8,
+    defense: 3,
+    hp: 18
+  },
+  { // Level 13-14
+    id: 'skeleton',
+    name: 'Skeleton',
+    icon: '💀',
+    attack: 9,
+    defense: 2,
+    hp: 15
+  },
+  { // Level 15+
+    id: 'lich',
+    name: 'Lich',
+    icon: '🧙‍♂️',
+    attack: 12,
+    defense: 4,
+    hp: 30
+  }
+]
+
 export const createMonster = (level: number): MonsterData => {
-  const monsters = [
-    {
-      id: 'rat',
-      name: 'Rat',
-      icon: '🐀',
-      attack: 3,
-      defense: 0,
-      hp: 5
-    },
-    {
-      id: 'spider',
-      name: 'Spider', 
-      icon: '🕷️',
-      attack: 4,
-      defense: 1,
-      hp: 6
-    },
-    {
-      id: 'goblin',
-      name: 'Goblin',
-      icon: '👹',
-      attack: 5,
-      defense: 1,
-      hp: 8
-    },
-    {
-      id: 'orc',
-      name: 'Orc',
-      icon: '👺',
-      attack: 6,
-      defense: 2,
-      hp: 12
-    }
-  ]
+  // Determine which monsters are available for this level
+  const maxMonsterIndex = Math.min(Math.floor((level + 1) / 2), MONSTERS.length) - 1
+  const availableMonsters = MONSTERS.slice(0, maxMonsterIndex + 1)
   
-  // Pick monster based on level, no scaling
-  const baseMonster = monsters[Math.min(Math.floor(level / 3), monsters.length - 1)]
+  // Pick a random monster from available monsters
+  const baseMonster = availableMonsters[Math.floor(Math.random() * availableMonsters.length)]
   
   const monster = {
     ...baseMonster,
@@ -125,4 +184,20 @@ export const createMonster = (level: number): MonsterData => {
   console.log(`Created monster for level ${level}: ${monster.name} (${monster.attack} atk, ${monster.defense} def, ${monster.hp} hp)`)
   
   return monster
+}
+
+// Export function to guarantee the newest monster appears at least once per level
+export const createGuaranteedNewMonster = (level: number): MonsterData | null => {
+  const monsterIndex = Math.floor((level + 1) / 2) - 1
+  
+  // Check if this level introduces a new monster
+  if (monsterIndex >= 0 && monsterIndex < MONSTERS.length && (level + 1) % 2 === 0) {
+    const newMonster = MONSTERS[monsterIndex]
+    return {
+      ...newMonster,
+      id: `${newMonster.id}-${level}`
+    }
+  }
+  
+  return null
 }

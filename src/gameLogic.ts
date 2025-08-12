@@ -275,6 +275,10 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       // This shouldn't be called since detector is not immediate anymore
       return 'Detector effect should be handled in store!'
       
+    case 'bag':
+      runState.inventory.push(null) // Add one more inventory slot
+      return 'Gained an extra inventory slot!'
+      
     case 'shop':
       // Shop opening is handled in store
       return 'Shop opened!'

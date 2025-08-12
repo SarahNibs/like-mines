@@ -34,9 +34,17 @@
       justify-content: flex-start;
     }
     
+    #board-container {
+      display: flex;
+      justify-content: flex-start;
+      align-items: flex-start;
+    }
+    
     #game-board {
       border: 2px solid #444;
       background: #222;
+      width: 500px;
+      height: 375px;
     }
     
     #right-panel {
@@ -47,20 +55,6 @@
       border-radius: 8px;
     }
     
-    #bottom-panel {
-      display: flex;
-      gap: 20px;
-      justify-content: flex-start;
-      margin-top: 20px;
-    }
-    
-    #bottom-panel .status {
-      width: 250px;
-      background: #333;
-      border: 2px solid #444;
-      padding: 15px;
-      border-radius: 8px;
-    }
     
     #top-panel .status {
       width: 300px;
@@ -181,7 +175,6 @@
   <!-- Top area: Global run info -->
   <div id="top-panel">
     <div class="status" style="height: 140px;">
-      <h3>Run Progress</h3>
       <div class="status-content">
         <div id="level-info">Level 1 / 10</div>
         <div id="hp-info">HP: 100 / 100</div>
@@ -193,10 +186,20 @@
       </div>
     </div>
     
+    <!-- Debug controls -->
+    <div class="status" style="height: 140px; margin-left: 20px;">
+      <div class="status-content">
+        <button id="reveal-all-player" style="padding: 8px; margin: 4px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer;">Win Board</button>
+        <button id="reveal-all-opponent" style="padding: 8px; margin: 4px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Lose Board</button>
+        <button id="next-level" style="padding: 8px; margin: 4px; background: #ffa500; color: white; border: none; border-radius: 4px; cursor: pointer;">Next Level</button>
+        <button id="reset-game" style="padding: 8px; margin: 4px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Run</button>
+      </div>
+    </div>
+    
     <!-- Rewind confirmation widget -->
     <div id="rewind-widget" class="status" style="height: 120px; display: none; margin-left: 20px;">
-      <h3 style="color: #ff6b6b;">⚠️ Rewind Protection</h3>
       <div class="status-content">
+        <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 8px;">⚠️ Rewind Protection</div>
         <div id="rewind-message" style="margin-bottom: 10px;"></div>
         <div style="display: flex; gap: 10px;">
           <button id="rewind-proceed" style="padding: 8px 12px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Reveal Anyway</button>
@@ -207,8 +210,8 @@
     
     <!-- Shop widget -->
     <div id="shop-widget" class="status" style="height: 200px; display: none; margin-left: 20px;">
-      <h3 style="color: #ffa500;">🏪 Shop</h3>
       <div class="status-content">
+        <div style="color: #ffa500; font-weight: bold; margin-bottom: 8px;">🏪 Shop</div>
         <div id="shop-items" style="display: flex; flex-direction: column; gap: 4px; overflow-y: auto;"></div>
         <button id="shop-close" style="padding: 6px 12px; margin-top: 8px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Close</button>
       </div>
@@ -216,8 +219,8 @@
     
     <!-- Discard confirmation widget -->
     <div id="discard-widget" class="status" style="height: 120px; display: none; margin-left: 20px;">
-      <h3 style="color: #ff6b6b;">🗑️ Discard Item</h3>
       <div class="status-content">
+        <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 8px;">🗑️ Discard Item</div>
         <div id="discard-message" style="margin-bottom: 10px;"></div>
         <div style="display: flex; gap: 10px;">
           <button id="discard-confirm" style="padding: 8px 12px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Discard</button>
@@ -228,61 +231,61 @@
   </div>
   
   <div id="game-container">
-    <div style="position: relative;">
-      <canvas id="game-board" width="640" height="480"></canvas>
-      
-      <!-- Board status overlay -->
-      <div id="board-overlay" style="
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 640px;
-        height: 480px;
-        background: rgba(0, 0, 0, 0.8);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        font-size: 48px;
-        font-weight: bold;
-        color: #ffa500;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-        z-index: 10;
-      ">
-        <div id="overlay-message">Board Cleared!</div>
+    <div id="board-container">
+      <div style="position: relative;">
+        <canvas id="game-board" width="500" height="375"></canvas>
+        
+        <!-- Board status overlay -->
+        <div id="board-overlay" style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.8);
+          display: none;
+          align-items: center;
+          justify-content: center;
+          font-size: 48px;
+          font-weight: bold;
+          color: #ffa500;
+          text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+          z-index: 10;
+        ">
+          <div id="overlay-message">Board Cleared!</div>
+        </div>
       </div>
     </div>
     
-    <!-- Right panel: Clues and future inventory/upgrades/shop -->
+    <!-- Right panel: Status, Inventory, Clues -->
     <div id="right-panel">
-      <div class="status" style="height: 140px;"> <!-- Debug controls on top -->
-        <h3>Debug Controls</h3>
+      <div class="status" style="height: 120px;"> <!-- Combined Board + Tile Status -->
         <div class="status-content">
-          <button id="reveal-all-player" style="padding: 8px; margin: 4px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer;">Win Board</button>
-          <button id="reveal-all-opponent" style="padding: 8px; margin: 4px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Lose Board</button>
-          <button id="next-level" style="padding: 8px; margin: 4px; background: #ffa500; color: white; border: none; border-radius: 4px; cursor: pointer;">Next Level</button>
-          <button id="reset-game" style="padding: 8px; margin: 4px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Run</button>
+          <div id="turn-info">Player's Turn</div>
+          <div id="win-status"></div>
+          <div id="player-tiles">Player tiles revealed: 0/0</div>
+          <div id="opponent-tiles">AI tiles revealed: 0/0</div>
+          <div style="margin-top: 8px;">
+            <button id="end-turn" style="padding: 8px 16px; background: #6a6a6a; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">End Turn</button>
+            <button id="start-new-run" style="padding: 8px 16px; margin-left: 8px; background: #ffa500; color: white; border: none; border-radius: 4px; cursor: pointer;">Start New Run</button>
+          </div>
         </div>
       </div>
       
       <div class="status" style="height: 100px;"> <!-- Inventory -->
-        <h3>Inventory</h3>
         <div class="status-content">
           <div id="inventory" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
         </div>
       </div>
       
-      
-      <div class="status" style="height: 160px;"> <!-- Taller for clues -->
-        <h3>Clues</h3>
+      <div class="status" style="height: 160px;"> <!-- Clues -->
         <div class="status-content">
           <div id="clue-hint" style="margin-bottom: 10px; color: #ffa500;"></div>
           <div id="clue-hands" style="display: flex; gap: 15px;">
             <div>
-              <h4>Hand A</h4>
               <div id="hand-a" class="hand"></div>
             </div>
             <div>
-              <h4>Hand B</h4>
               <div id="hand-b" class="hand"></div>
             </div>
           </div>
@@ -290,27 +293,6 @@
             Right-click tiles to annotate (gray slash)
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Bottom area: Board status and current progress -->
-  <div id="bottom-panel">
-    <div class="status" style="height: 120px;">
-      <h3>Board Status</h3>
-      <div class="status-content">
-        <div id="turn-info">Player's Turn</div>
-        <div id="win-status"></div>
-        <button id="end-turn" style="padding: 8px 16px; margin-top: 8px; background: #6a6a6a; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">End Turn</button>
-        <button id="start-new-run" style="padding: 8px 16px; margin-top: 8px; margin-left: 8px; background: #ffa500; color: white; border: none; border-radius: 4px; cursor: pointer;">Start New Run</button>
-      </div>
-    </div>
-    
-    <div class="status">
-      <h3>Tile Progress</h3>
-      <div class="status-content">
-        <div id="player-tiles">Player tiles revealed: 0/0</div>
-        <div id="opponent-tiles">AI tiles revealed: 0/0</div>
       </div>
     </div>
   </div>

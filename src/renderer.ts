@@ -5,7 +5,8 @@ export class GameRenderer {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
   private tileSize: number = 60
-  private padding: number = 20
+  private startX: number = 20 // Board start position X (for centering)
+  private startY: number = 20 // Board start position Y (for centering)
   private gap: number = 2 // Gap between tiles
   private highlightedTiles: Set<string> = new Set() // x,y coordinates
   private extraHighlightedTiles: Set<string> = new Set() // x,y coordinates for extra highlighting
@@ -135,10 +136,11 @@ export class GameRenderer {
     ctx.restore()
   }
 
-  // Calculate tile size based on board dimensions and canvas size
+  // Calculate tile size and centering based on board dimensions and canvas size
   calculateTileSize(board: Board): void {
-    const availableWidth = this.canvas.width - this.padding * 2
-    const availableHeight = this.canvas.height - this.padding * 2
+    const padding = 20
+    const availableWidth = this.canvas.width - padding * 2
+    const availableHeight = this.canvas.height - padding * 2
     
     // Account for gaps between tiles
     const totalGapWidth = (board.width - 1) * this.gap
@@ -147,7 +149,16 @@ export class GameRenderer {
     const tileWidthMax = Math.floor((availableWidth - totalGapWidth) / board.width)
     const tileHeightMax = Math.floor((availableHeight - totalGapHeight) / board.height)
     
-    this.tileSize = Math.min(tileWidthMax, tileHeightMax, 70) // Max 70px tiles
+    // Use the limiting dimension to determine tile size
+    this.tileSize = Math.min(tileWidthMax, tileHeightMax, 120) // Max 120px tiles
+    
+    // Calculate the actual board dimensions
+    const boardWidth = board.width * this.tileSize + totalGapWidth
+    const boardHeight = board.height * this.tileSize + totalGapHeight
+    
+    // Center the board within the canvas
+    this.startX = (this.canvas.width - boardWidth) / 2
+    this.startY = (this.canvas.height - boardHeight) / 2
   }
 
   // Getter methods for renderer properties (for tooltip positioning)
@@ -156,23 +167,28 @@ export class GameRenderer {
   }
 
   getPadding(): number {
-    return this.padding
+    return this.startX // Return actual start position instead of padding
   }
 
   getGap(): number {
     return this.gap
   }
 
+  getStartX(): number {
+    return this.startX
+  }
+
+  getStartY(): number {
+    return this.startY
+  }
+
   // Get tile position from mouse coordinates
   getTileFromCoordinates(board: Board, mouseX: number, mouseY: number): { x: number; y: number } | null {
-    const startX = this.padding
-    const startY = this.padding
-    
     // Account for gaps when calculating tile position
     for (let x = 0; x < board.width; x++) {
       for (let y = 0; y < board.height; y++) {
-        const tileX = startX + x * (this.tileSize + this.gap)
-        const tileY = startY + y * (this.tileSize + this.gap)
+        const tileX = this.startX + x * (this.tileSize + this.gap)
+        const tileY = this.startY + y * (this.tileSize + this.gap)
         
         if (mouseX >= tileX && mouseX < tileX + this.tileSize &&
             mouseY >= tileY && mouseY < tileY + this.tileSize) {
@@ -226,8 +242,8 @@ export class GameRenderer {
 
   // Render a single tile
   private renderTile(tile: Tile, board: Board): void {
-    const x = this.padding + tile.x * (this.tileSize + this.gap)
-    const y = this.padding + tile.y * (this.tileSize + this.gap)
+    const x = this.startX + tile.x * (this.tileSize + this.gap)
+    const y = this.startY + tile.y * (this.tileSize + this.gap)
     
     const colors = this.getTileColors(tile)
     const isHighlighted = this.highlightedTiles.has(`${tile.x},${tile.y}`) || this.persistentHighlightedTiles.has(`${tile.x},${tile.y}`)
@@ -412,6 +428,11 @@ export class GameRenderer {
     // Find the required tile to determine chain direction
     const requiredTile = board.tiles[chainData.requiredTileY][chainData.requiredTileX]
     
+    // If the required tile is revealed, the chain is no longer active - don't draw indicators
+    if (requiredTile.revealed) {
+      return
+    }
+    
     // Calculate direction from this tile to required tile
     const dx = chainData.requiredTileX - tile.x
     const dy = chainData.requiredTileY - tile.y
@@ -443,8 +464,8 @@ export class GameRenderer {
       ctx.fillText('🔒', centerX, centerY)
       
       // Calculate the exact position where the key will be on the required tile
-      const requiredTileX = this.padding + chainData.requiredTileX * (this.tileSize + this.gap)
-      const requiredTileY = this.padding + chainData.requiredTileY * (this.tileSize + this.gap)
+      const requiredTileX = this.startX + chainData.requiredTileX * (this.tileSize + this.gap)
+      const requiredTileY = this.startY + chainData.requiredTileY * (this.tileSize + this.gap)
       const keyRadius = this.tileSize * 0.12
       
       let keyPositionX: number, keyPositionY: number
@@ -474,45 +495,45 @@ export class GameRenderer {
         }
       }
       
-      // Draw arrow pointing to the key position
-      ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)' // Orange arrow
+      // Draw chain link connecting to the key position
+      ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)' // Orange chain
       ctx.lineWidth = 3
       
-      // Arrow start position (edge of lock)
-      const arrowStartX = centerX + dx * radius * 1.5
-      const arrowStartY = centerY + dy * radius * 1.5
+      // Chain start position (edge of lock)
+      const chainStartX = centerX + dx * radius * 1.5
+      const chainStartY = centerY + dy * radius * 1.5
       
-      // Arrow end position (towards the key position on required tile)
-      const arrowDirectionX = keyPositionX - arrowStartX
-      const arrowDirectionY = keyPositionY - arrowStartY
-      const arrowDistance = Math.sqrt(arrowDirectionX * arrowDirectionX + arrowDirectionY * arrowDirectionY)
-      const arrowLength = Math.min(this.tileSize * 0.3, arrowDistance * 0.4)
+      // Calculate direction and create chain links
+      const chainDirectionX = keyPositionX - chainStartX
+      const chainDirectionY = keyPositionY - chainStartY
+      const chainDistance = Math.sqrt(chainDirectionX * chainDirectionX + chainDirectionY * chainDirectionY)
+      const chainLength = Math.min(this.tileSize * 0.5, chainDistance * 0.6)
       
-      const arrowEndX = arrowStartX + (arrowDirectionX / arrowDistance) * arrowLength
-      const arrowEndY = arrowStartY + (arrowDirectionY / arrowDistance) * arrowLength
+      // Normalize direction
+      const normX = chainDirectionX / chainDistance
+      const normY = chainDirectionY / chainDistance
       
-      // Draw arrow line
-      ctx.beginPath()
-      ctx.moveTo(arrowStartX, arrowStartY)
-      ctx.lineTo(arrowEndX, arrowEndY)
-      ctx.stroke()
+      // Draw chain as series of small connected ovals (links)
+      const linkSize = this.tileSize * 0.05
+      const linkSpacing = linkSize * 1.5
+      const numLinks = Math.floor(chainLength / linkSpacing)
       
-      // Draw arrow head
-      const arrowHeadSize = 6
-      const angle = Math.atan2(arrowDirectionY, arrowDirectionX)
-      
-      ctx.beginPath()
-      ctx.moveTo(arrowEndX, arrowEndY)
-      ctx.lineTo(
-        arrowEndX - arrowHeadSize * Math.cos(angle - Math.PI / 6),
-        arrowEndY - arrowHeadSize * Math.sin(angle - Math.PI / 6)
-      )
-      ctx.moveTo(arrowEndX, arrowEndY)
-      ctx.lineTo(
-        arrowEndX - arrowHeadSize * Math.cos(angle + Math.PI / 6),
-        arrowEndY - arrowHeadSize * Math.sin(angle + Math.PI / 6)
-      )
-      ctx.stroke()
+      for (let i = 0; i < numLinks; i++) {
+        const linkX = chainStartX + normX * i * linkSpacing
+        const linkY = chainStartY + normY * i * linkSpacing
+        
+        // Draw oval link
+        ctx.beginPath()
+        ctx.ellipse(linkX, linkY, linkSize, linkSize * 0.6, 0, 0, Math.PI * 2)
+        ctx.stroke()
+        
+        // Add small perpendicular link for chain effect (every other link)
+        if (i % 2 === 1) {
+          ctx.beginPath()
+          ctx.ellipse(linkX, linkY, linkSize * 0.6, linkSize, Math.PI / 2, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+      }
       
     } else {
       // Draw key icon for unblocked tiles (tiles that can unlock others)
@@ -584,15 +605,15 @@ export class GameRenderer {
       }
     }
     
-    // Draw board border (accounting for gaps)
+    // Draw board border (accounting for gaps and centering)
     const boardWidth = board.width * this.tileSize + (board.width - 1) * this.gap
     const boardHeight = board.height * this.tileSize + (board.height - 1) * this.gap
     
     this.ctx.strokeStyle = '#888'
     this.ctx.lineWidth = 2
     this.ctx.strokeRect(
-      this.padding - 2, 
-      this.padding - 2, 
+      this.startX - 2, 
+      this.startY - 2, 
       boardWidth + 4, 
       boardHeight + 4
     )

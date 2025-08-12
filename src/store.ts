@@ -532,10 +532,13 @@ class GameStore {
 
   // Shop functionality
   private openShop(): void {
-    // Generate 4 random items + 1 random upgrade with costs 2, 3, 4, 5, 7 gold
+    // Generate 4 random items + 1 random upgrade with costs scaling by level
     import('./items').then(({ SHOP_ITEMS }) => {
       import('./upgrades').then(({ getAvailableUpgrades }) => {
-        const costs = [2, 3, 4, 5, 7] // 7g for upgrade
+        // Base costs, increased by +1 every 3 levels past level 6
+        const level = this.state.run.currentLevel
+        const costIncrease = Math.floor(Math.max(0, level - 6) / 3)
+        const costs = [2 + costIncrease, 3 + costIncrease, 4 + costIncrease, 5 + costIncrease, 7 + costIncrease]
         const shopItems = []
         
         // Add 4 random items
@@ -588,13 +591,31 @@ class GameStore {
     
     // Handle upgrades vs items
     if (shopItem.isUpgrade) {
-      // Apply upgrade immediately
+      // Apply upgrade immediately - this will handle its own setState
       this.applyUpgrade(shopItem.item.id)
       console.log(`Bought and applied ${shopItem.item.name} upgrade for ${shopItem.cost} gold`)
+      
+      // Remove the bought item from shop and update state with current run from state (which was updated by applyUpgrade)
+      const newShopItems = [...this.state.shopItems]
+      newShopItems.splice(index, 1)
+      
+      this.setState({ 
+        run: { ...this.state.run }, // Use the updated run from state
+        shopItems: newShopItems
+      })
     } else if (shopItem.item.immediate) {
       // Use immediate item right away
       const message = applyItemEffect(run, shopItem.item)
       console.log(`Bought and used ${shopItem.item.name} for ${shopItem.cost} gold: ${message}`)
+      
+      // Remove the bought item from shop
+      const newShopItems = [...this.state.shopItems]
+      newShopItems.splice(index, 1)
+      
+      this.setState({ 
+        run: { ...run },
+        shopItems: newShopItems
+      })
     } else {
       // Try to add item to inventory
       const success = addItemToInventory(run, shopItem.item)
@@ -603,16 +624,16 @@ class GameStore {
       } else {
         console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold`)
       }
+      
+      // Remove the bought item from shop
+      const newShopItems = [...this.state.shopItems]
+      newShopItems.splice(index, 1)
+      
+      this.setState({ 
+        run: { ...run },
+        shopItems: newShopItems
+      })
     }
-    
-    // Remove the bought item from shop
-    const newShopItems = [...this.state.shopItems]
-    newShopItems.splice(index, 1)
-    
-    this.setState({ 
-      run: { ...run },
-      shopItems: newShopItems
-    })
     return true
   }
 
@@ -707,19 +728,15 @@ class GameStore {
       return false // No Rewind, no protection
     }
     
-    // Check if tile is dangerous (not player's tile OR has monster content)
-    const isDangerous = tile.owner !== 'player' || tile.content === TileContent.Monster
+    // Check if tile is dangerous (only for neutral/opponent tiles, not monsters)
+    const isDangerous = tile.owner !== 'player'
     
     if (!isDangerous) {
       return false // Not dangerous, no need for protection
     }
     
     // Store pending rewind data and show widget
-    const tileDescription = tile.owner !== 'player' 
-      ? `${tile.owner} tile` 
-      : tile.content === TileContent.Monster && tile.monsterData
-        ? `monster (${tile.monsterData.name})`
-        : 'dangerous tile'
+    const tileDescription = `${tile.owner} tile`
     
     this.setState({
       pendingRewind: {
