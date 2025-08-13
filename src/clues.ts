@@ -13,7 +13,7 @@ export interface ProbabilisticClue {
 }
 
 // Generate a probabilistic clue for the player
-export function generateClue(board: Board): ProbabilisticClue {
+export function generateClue(board: Board, ownedUpgrades: string[] = []): ProbabilisticClue {
   const playerTiles = getTilesByOwner(board, TileOwner.Player).filter(tile => !tile.revealed)
   const nonPlayerTiles = [
     ...getTilesByOwner(board, TileOwner.Opponent).filter(tile => !tile.revealed),
@@ -29,52 +29,43 @@ export function generateClue(board: Board): ProbabilisticClue {
     }
   }
 
-  // Select 6 tiles total (or fewer if not enough available)
-  const poolSize = Math.min(6, playerTiles.length + nonPlayerTiles.length)
-  const selectedTiles: Tile[] = []
+  // Count hand upgrade bonuses
+  const leftHandBonus = ownedUpgrades.filter(id => id === 'left-hand').length
+  const rightHandBonus = ownedUpgrades.filter(id => id === 'right-hand').length
 
-  // Bias towards player tiles - aim for 4-5 player tiles in the pool
-  const targetPlayerTiles = Math.min(Math.max(poolSize - 2, 1), playerTiles.length)
-  const targetNonPlayerTiles = poolSize - targetPlayerTiles
+  // Base: 2 tiles per hand, exactly 1 yours per hand
+  // Left Hand upgrades add more player tiles to left hand (hand A)  
+  // Right Hand upgrades add more player tiles to right hand (hand B)
+  const leftHandPlayerTiles = 1 + leftHandBonus
+  const leftHandNonPlayerTiles = 1
+  const rightHandPlayerTiles = 1 + rightHandBonus  
+  const rightHandNonPlayerTiles = 1
 
-  // Randomly select player tiles
+  // Shuffle available tiles
   const shuffledPlayerTiles = [...playerTiles].sort(() => Math.random() - 0.5)
-  selectedTiles.push(...shuffledPlayerTiles.slice(0, targetPlayerTiles))
-
-  // Randomly select non-player tiles
   const shuffledNonPlayerTiles = [...nonPlayerTiles].sort(() => Math.random() - 0.5)
-  selectedTiles.push(...shuffledNonPlayerTiles.slice(0, targetNonPlayerTiles))
 
-  // Shuffle the combined pool
-  selectedTiles.sort(() => Math.random() - 0.5)
-
-  // Split into two hands
-  // Hand A gets N-1 player tiles + 1 non-player tile (main hand)
-  // Hand B gets the rest
-  const playerTilesInPool = selectedTiles.filter(tile => tile.owner === TileOwner.Player)
-  const nonPlayerTilesInPool = selectedTiles.filter(tile => tile.owner !== TileOwner.Player)
-
+  // Build hands
   const handA: Tile[] = []
   const handB: Tile[] = []
 
-  if (playerTilesInPool.length > 1 && nonPlayerTilesInPool.length > 0) {
-    // Standard case: Hand A gets most player tiles + 1 non-player
-    handA.push(...playerTilesInPool.slice(0, playerTilesInPool.length - 1))
-    handA.push(nonPlayerTilesInPool[0])
-    
-    // Hand B gets remaining tiles
-    handB.push(...playerTilesInPool.slice(playerTilesInPool.length - 1))
-    handB.push(...nonPlayerTilesInPool.slice(1))
-  } else {
-    // Edge case: distribute evenly
-    selectedTiles.forEach((tile, index) => {
-      if (index % 2 === 0) {
-        handA.push(tile)
-      } else {
-        handB.push(tile)
-      }
-    })
-  }
+  // Add player tiles to each hand (respecting available tiles)
+  const availablePlayerTilesForA = Math.min(leftHandPlayerTiles, shuffledPlayerTiles.length)
+  handA.push(...shuffledPlayerTiles.slice(0, availablePlayerTilesForA))
+  
+  const availablePlayerTilesForB = Math.min(rightHandPlayerTiles, shuffledPlayerTiles.length - availablePlayerTilesForA)
+  handB.push(...shuffledPlayerTiles.slice(availablePlayerTilesForA, availablePlayerTilesForA + availablePlayerTilesForB))
+
+  // Add non-player tiles to each hand
+  const availableNonPlayerTilesForA = Math.min(leftHandNonPlayerTiles, shuffledNonPlayerTiles.length)
+  handA.push(...shuffledNonPlayerTiles.slice(0, availableNonPlayerTilesForA))
+
+  const availableNonPlayerTilesForB = Math.min(rightHandNonPlayerTiles, shuffledNonPlayerTiles.length - availableNonPlayerTilesForA)
+  handB.push(...shuffledNonPlayerTiles.slice(availableNonPlayerTilesForA, availableNonPlayerTilesForA + availableNonPlayerTilesForB))
+
+  // Shuffle each hand
+  handA.sort(() => Math.random() - 0.5)
+  handB.sort(() => Math.random() - 0.5)
 
   // Generate hint - keep it ambiguous
   const hint = `Clue ${Math.random().toString(36).substr(2, 4).toUpperCase()}`

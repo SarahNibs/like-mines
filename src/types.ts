@@ -1,5 +1,18 @@
 // Core game types based on the PRD
 
+// =============================================================================
+// TROPHY SYSTEM
+// =============================================================================
+
+export type TrophyType = 'silver' | 'gold'
+
+export interface Trophy {
+  id: string
+  type: TrophyType
+  stolen: boolean
+  stolenBy?: string // Monster name that stole it
+}
+
 export enum TileOwner {
   Player = 'player',
   Opponent = 'opponent', 
@@ -73,6 +86,11 @@ export interface Tile {
     isBlocked: boolean // True if this tile is blocked by the chain
     requiredTileX: number // X coordinate of tile that must be revealed first
     requiredTileY: number // Y coordinate of tile that must be revealed first
+    // For longer chains - a tile can have both a lock and a key
+    hasSecondaryKey?: boolean // True if this tile also has a key for another tile
+    secondaryChainId?: string // Chain ID for the secondary key
+    secondaryRequiredTileX?: number // X coordinate of tile this secondary key unlocks
+    secondaryRequiredTileY?: number // Y coordinate of tile this secondary key unlocks
   } // Chain constraint data
 }
 
@@ -97,7 +115,14 @@ export interface RunState {
   defense: number
   loot: number // Gold gained per opponent tile revealed or monster fought
   inventory: (ItemData | null)[] // 5 slots, null = empty
+  maxInventory: number // Maximum inventory slots (increased by Bag upgrades)
   upgrades: string[] // Array of upgrade IDs that have been acquired
+  trophies: Trophy[] // Player's trophy collection
+  temporaryBuffs: {
+    ward?: number // Defense boost for next fight
+    blaze?: number // Attack boost for next fight
+    protection?: number // Number of reveals that won't end turn (opponent/neutral tiles)
+  }
 }
 
 export interface GameState {
@@ -109,6 +134,7 @@ export interface GameState {
   run: RunState
   transmuteMode: boolean // Whether player is in transmute tile selection mode
   detectorMode: boolean // Whether player is in detector tile selection mode
+  keyMode: boolean // Whether player is in key tile selection mode
   shopOpen: boolean // Whether the shop widget is currently open
   shopItems: Array<{item: ItemData | UpgradeData, cost: number, isUpgrade?: boolean}> // Current shop inventory
   pendingRewind?: {
@@ -120,6 +146,9 @@ export interface GameState {
     itemIndex: number
     itemName: string
   } | null // Pending discard confirmation data
+  upgradeChoice?: {
+    choices: UpgradeData[]
+  } | null // Pending upgrade choice selection
 }
 
 // Helper function to get tile at position

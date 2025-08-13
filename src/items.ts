@@ -20,21 +20,7 @@ export const FIRST_AID: ItemData = {
   immediate: true
 }
 
-export const BAG: ItemData = {
-  id: 'bag',
-  name: 'Bag',
-  description: 'Grants +1 inventory slot permanently',
-  icon: '🎒',
-  immediate: true
-}
 
-export const BEAR_TRAP: ItemData = {
-  id: 'bear-trap', 
-  name: 'Bear Trap',
-  description: 'Deals 1 HP damage',
-  icon: '🪤',
-  immediate: true
-}
 
 export const SHOP: ItemData = {
   id: 'shop',
@@ -80,6 +66,54 @@ export const REWIND: ItemData = {
   immediate: false
 }
 
+export const WARD: ItemData = {
+  id: 'ward',
+  name: 'Ward',
+  description: 'Grants +4 defense for your next fight only',
+  icon: '🔰',
+  immediate: false
+}
+
+export const BLAZE: ItemData = {
+  id: 'blaze',
+  name: 'Blaze',
+  description: 'Grants +5 attack for your next fight only',
+  icon: '🔥',
+  immediate: false
+}
+
+export const WHISTLE: ItemData = {
+  id: 'whistle',
+  name: 'Whistle',
+  description: 'Redistributes all monsters on the board to random unrevealed tiles',
+  icon: '🎺',
+  immediate: false
+}
+
+export const KEY: ItemData = {
+  id: 'key',
+  name: 'Key',
+  description: 'Unlocks any locked tile, removing both the lock and the corresponding key',
+  icon: '🗝️',
+  immediate: false
+}
+
+export const PROTECTION: ItemData = {
+  id: 'protection',
+  name: 'Protection',
+  description: 'The next tile you reveal never ends your turn',
+  icon: '📜',
+  immediate: false
+}
+
+export const CLUE: ItemData = {
+  id: 'clue',
+  name: 'Clue',
+  description: 'Grants you an additional clue about the board',
+  icon: '🔍',
+  immediate: false
+}
+
 // =============================================================================
 // ITEM COLLECTIONS
 // =============================================================================
@@ -87,14 +121,14 @@ export const REWIND: ItemData = {
 // All available items
 export const ALL_ITEMS: ItemData[] = [
   // Immediate items
-  GOLD_COIN, FIRST_AID, BAG, BEAR_TRAP, SHOP,
+  GOLD_COIN, FIRST_AID, SHOP,
   // Inventory items  
-  CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
+  CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
 ]
 
 // Items available for purchase in shops (excludes shop itself, gold, and negative items like bear traps)
 export const SHOP_ITEMS: ItemData[] = [
-  FIRST_AID, BAG, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND
+  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
 ]
 
 // =============================================================================
@@ -108,15 +142,15 @@ const MONSTERS = [
     icon: '🐀',
     attack: 3,
     defense: 0,
-    hp: 5
+    hp: 6
   },
   { // Level 3-4
     id: 'spider',
     name: 'Spider', 
-    icon: '🕷️',
+    icon: '🕸️',
     attack: 4,
     defense: 1,
-    hp: 6
+    hp: 8
   },
   { // Level 5-6
     id: 'goblin',
@@ -124,7 +158,7 @@ const MONSTERS = [
     icon: '👹',
     attack: 5,
     defense: 1,
-    hp: 8
+    hp: 11
   },
   { // Level 7-8
     id: 'orc',
@@ -132,39 +166,55 @@ const MONSTERS = [
     icon: '👺',
     attack: 6,
     defense: 2,
-    hp: 12
+    hp: 16
   },
   { // Level 9-10
-    id: 'dragon',
-    name: 'Dragon',
-    icon: '🐉',
-    attack: 15,
-    defense: 2,
-    hp: 25
-  },
-  { // Level 11-12
     id: 'demon',
     name: 'Demon',
     icon: '👿',
     attack: 8,
     defense: 3,
-    hp: 18
+    hp: 23
   },
-  { // Level 13-14
+  { // Level 11-12
     id: 'skeleton',
     name: 'Skeleton',
     icon: '💀',
-    attack: 9,
+    attack: 10,
     defense: 2,
-    hp: 15
+    hp: 26
   },
-  { // Level 15+
+  { // Level 13-14
+    id: 'dragon',
+    name: 'Dragon',
+    icon: '🐉',
+    attack: 15,
+    defense: 4,
+    hp: 42
+  },
+  { // Level 15-16
     id: 'lich',
     name: 'Lich',
     icon: '🧙‍♂️',
-    attack: 12,
-    defense: 4,
-    hp: 30
+    attack: 18,
+    defense: 5,
+    hp: 48
+  },
+  { // Level 17-18
+    id: 'titan',
+    name: 'Titan',
+    icon: '⚡',
+    attack: 22,
+    defense: 6,
+    hp: 59
+  },
+  { // Level 19-20
+    id: 'void-lord',
+    name: 'Void Lord',
+    icon: '🌌',
+    attack: 28,
+    defense: 8,
+    hp: 70
   }
 ]
 

@@ -1,4 +1,5 @@
 import { Board, Tile, TileOwner, TileContent, GameState, RunState, getTileAt, getTilesByOwner, ItemData, MonsterData } from './types'
+import { PROTECTION } from './items'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
 
@@ -67,16 +68,19 @@ export function checkBoardStatus(board: Board): 'in-progress' | 'won' | 'lost' {
 export function createInitialRunState(): RunState {
   return {
     currentLevel: 1,
-    maxLevel: 10, // 10-level run for testing
-    hp: 100,
-    maxHp: 100,
+    maxLevel: 20, // 20-level run
+    hp: 75,
+    maxHp: 75,
     // Player combat and inventory stats
     gold: 0,
     attack: 5, // Starting attack power
     defense: 0, // Starting defense
-    loot: 1, // Starting loot bonus per opponent tile/monster
-    inventory: [null, null, null, null, null], // 5 empty slots
-    upgrades: [] // No upgrades initially
+    loot: 0, // Starting loot bonus per opponent tile/monster
+    inventory: [PROTECTION, PROTECTION, null, null, null], // Start with 2 Protection scrolls
+    maxInventory: 5, // Starting with 5 inventory slots
+    upgrades: [], // No upgrades initially
+    trophies: [], // No trophies initially
+    temporaryBuffs: {} // No temporary buffs initially
   }
 }
 
@@ -84,7 +88,7 @@ export function createInitialRunState(): RunState {
 export function createInitialGameState(): GameState {
   const run = createInitialRunState()
   const board = createBoardForLevel(run.currentLevel, run.gold, run.upgrades)
-  const initialClue = generateClue(board)
+  const initialClue = generateClue(board, run.upgrades)
   const boardStatus = checkBoardStatus(board)
   
   return {
@@ -96,6 +100,7 @@ export function createInitialGameState(): GameState {
     run,
     transmuteMode: false,
     detectorMode: false,
+    keyMode: false,
     shopOpen: false,
     shopItems: []
   }
@@ -114,24 +119,6 @@ export function progressToNextLevel(currentState: GameState): GameState {
   }
   
   const newBoard = createBoardForLevel(newLevel, currentState.run.gold, currentState.run.upgrades)
-  
-  // Apply QUICK upgrade: reveal random player tile
-  if (currentState.run.upgrades.includes('quick')) {
-    const playerTiles = []
-    for (let y = 0; y < newBoard.height; y++) {
-      for (let x = 0; x < newBoard.width; x++) {
-        const tile = newBoard.tiles[y][x]
-        if (tile.owner === 'player' && !tile.revealed) {
-          playerTiles.push({x, y})
-        }
-      }
-    }
-    
-    if (playerTiles.length > 0) {
-      const randomTile = playerTiles[Math.floor(Math.random() * playerTiles.length)]
-      revealTile(newBoard, randomTile.x, randomTile.y, 'player')
-    }
-  }
   
   // Apply WISDOM upgrade: add detector scan to random tile
   if (currentState.run.upgrades.includes('wisdom')) {
@@ -171,7 +158,7 @@ export function progressToNextLevel(currentState: GameState): GameState {
     }
   }
   
-  const initialClue = generateClue(newBoard)
+  const initialClue = generateClue(newBoard, currentState.run.upgrades)
   
   return {
     ...currentState,
@@ -181,6 +168,7 @@ export function progressToNextLevel(currentState: GameState): GameState {
     clues: [initialClue], // Reset clues for new board
     transmuteMode: false, // Reset transmute mode for new board
     detectorMode: false, // Reset detector mode for new board
+    keyMode: false, // Reset key mode for new board
     shopOpen: false, // Close shop for new board
     shopItems: [], // Clear shop items for new board
     run: {
@@ -191,21 +179,34 @@ export function progressToNextLevel(currentState: GameState): GameState {
 }
 
 // Combat system - returns damage taken by player
-export function fightMonster(monster: MonsterData, playerAttack: number, playerDefense: number): number {
+export function fightMonster(monster: MonsterData, runState: RunState): number {
   let monsterHp = monster.hp
   let totalDamageToPlayer = 0
   let rounds = 0
   const maxRounds = 1000 // Safety check to prevent infinite loops
   
-  console.log(`Combat: Player (${playerAttack} atk, ${playerDefense} def) vs ${monster.name} (${monster.attack} atk, ${monster.defense} def, ${monster.hp} hp)`)
+  // Apply temporary buffs
+  const effectiveAttack = runState.attack + (runState.temporaryBuffs.blaze || 0)
+  const effectiveDefense = runState.defense + (runState.temporaryBuffs.ward || 0)
+  
+  console.log(`Combat: Player (${effectiveAttack} atk, ${effectiveDefense} def) vs ${monster.name} (${monster.attack} atk, ${monster.defense} def, ${monster.hp} hp)`)
   
   while (monsterHp > 0 && rounds < maxRounds) {
+    // Calculate damage without minimums
+    const damageToPlayer = Math.max(0, monster.attack - effectiveDefense)
+    const damageToMonster = Math.max(0, effectiveAttack - monster.defense)
+    
+    // Check for infinite loop (both do 0 damage)
+    if (damageToPlayer === 0 && damageToMonster === 0) {
+      console.log('Combat stalemate detected - player wins but takes damage down to 1 HP')
+      // Player wins but goes down to 1 HP
+      return Math.max(0, runState.hp - 1)
+    }
+    
     // Monster attacks first
-    const damageToPlayer = Math.max(1, monster.attack - playerDefense)
     totalDamageToPlayer += damageToPlayer
     
     // Player attacks back
-    const damageToMonster = Math.max(1, playerAttack - monster.defense)
     monsterHp -= damageToMonster
     
     rounds++
@@ -220,6 +221,19 @@ export function fightMonster(monster: MonsterData, playerAttack: number, playerD
   }
   
   console.log(`Combat ended after ${rounds} rounds. Total damage to player: ${totalDamageToPlayer}`)
+  
+  // Clear temporary buffs after combat and remove from upgrades display
+  if (runState.temporaryBuffs.ward) {
+    delete runState.temporaryBuffs.ward
+    runState.upgrades = runState.upgrades.filter(id => id !== 'ward-temp')
+    console.log('Ward effect consumed.')
+  }
+  if (runState.temporaryBuffs.blaze) {
+    delete runState.temporaryBuffs.blaze
+    runState.upgrades = runState.upgrades.filter(id => id !== 'blaze-temp')
+    console.log('Blaze effect consumed.')
+  }
+  
   return totalDamageToPlayer
 }
 
@@ -251,9 +265,6 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       runState.gold += 1
       return 'Gained 1 gold!'
       
-    case 'bear-trap':
-      runState.hp = runState.hp - 1
-      return 'Bear trap! Lost 1 HP.'
       
     case 'first-aid':
       runState.hp = Math.min(runState.maxHp, runState.hp + 10)
@@ -274,10 +285,6 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
     case 'detector':
       // This shouldn't be called since detector is not immediate anymore
       return 'Detector effect should be handled in store!'
-      
-    case 'bag':
-      runState.inventory.push(null) // Add one more inventory slot
-      return 'Gained an extra inventory slot!'
       
     case 'shop':
       // Shop opening is handled in store

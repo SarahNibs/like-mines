@@ -9,6 +9,7 @@ class GameStore {
   private observers: Array<() => void> = []
   private ai: AIOpponent
   private aiTurnTimeout: number | null = null
+  private pendingUpgradeChoice: boolean = false
 
   constructor() {
     this.state = createInitialGameState()
@@ -65,7 +66,12 @@ class GameStore {
     }
     
     // Check for Rewind protection on dangerous tiles (unless bypassed with SHIFT)
-    if (!bypassRewind && this.checkRewindProtection(tile)) {
+    // BUT first check if Protection would handle this - if so, don't trigger Rewind
+    const wouldProtectionActivate = tile.owner !== 'player' && 
+                                   this.state.run.temporaryBuffs.protection && 
+                                   this.state.run.temporaryBuffs.protection > 0
+    
+    if (!bypassRewind && !wouldProtectionActivate && this.checkRewindProtection(tile)) {
       return false // Player chose not to reveal
     }
     
@@ -74,9 +80,24 @@ class GameStore {
       const newBoardStatus = checkBoardStatus(this.state.board)
       const isPlayerTile = tile.owner === 'player'
       
+      // Award trophies when board is won
+      if (newBoardStatus === 'won') {
+        this.awardTrophies()
+      }
+      
       // Award loot bonus for revealing opponent tiles
       if (tile.owner === 'opponent') {
         this.state.run.gold += this.state.run.loot
+      }
+      
+      // RESTING upgrade: heal when revealing neutral tiles
+      if (tile.owner === 'neutral') {
+        const restingCount = this.state.run.upgrades.filter(id => id === 'resting').length
+        if (restingCount > 0) {
+          const healAmount = restingCount * 3
+          this.state.run.hp = Math.min(this.state.run.maxHp, this.state.run.hp + healAmount)
+          console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
+        }
       }
       
       // Handle tile content after checking board status
@@ -88,7 +109,20 @@ class GameStore {
       }
       
       // Player continues turn if they revealed their own tile, otherwise switch to AI
-      const newTurn = (newBoardStatus === 'in-progress' && !isPlayerTile) ? 'opponent' : 'player'
+      // BUT if player has Protection and revealed opponent/neutral tile, consume Protection and stay on player turn
+      let newTurn = 'player'
+      if (newBoardStatus === 'in-progress' && !isPlayerTile) {
+        // Player revealed opponent/neutral tile - normally would end turn
+        if (this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0) {
+          // Consume Protection charge and stay on player turn
+          this.state.run.temporaryBuffs.protection -= 1
+          console.log(`Protection consumed! ${this.state.run.temporaryBuffs.protection} charges remaining.`)
+          newTurn = 'player'
+        } else {
+          // No protection - turn ends
+          newTurn = 'opponent'
+        }
+      }
       
       this.setState({
         board: { ...this.state.board },
@@ -102,8 +136,10 @@ class GameStore {
       } else if (newBoardStatus === 'lost') {
         this.handleBoardLost()
       } else if (newTurn === 'opponent') {
-        // Trigger AI turn after a short delay (only if turn actually switched)
-        this.scheduleAITurn()
+        // Only trigger AI turn if no upgrade choice is pending
+        if (!this.state.upgradeChoice && !this.pendingUpgradeChoice) {
+          this.scheduleAITurn()
+        }
       }
     }
     
@@ -138,7 +174,7 @@ class GameStore {
         
         // Generate new clue when switching to player turn and add to array
         const newClues = newBoardStatus === 'in-progress' ? 
-          [...this.state.clues, generateClue(this.state.board)] : this.state.clues
+          [...this.state.clues, generateClue(this.state.board, this.state.run.upgrades)] : this.state.clues
         
         this.setState({
           board: { ...this.state.board },
@@ -161,6 +197,12 @@ class GameStore {
   // Handle board won (player revealed all their tiles first)
   private handleBoardWon(): void {
     console.log('Board won! Preparing for next level...')
+    
+    // If shop is open, don't auto-progress - wait for shop to close
+    if (this.state.shopOpen) {
+      console.log('Shop is open - waiting for player to close shop before progressing')
+      return
+    }
     
     // Schedule transition to next level after delay
     setTimeout(() => {
@@ -218,9 +260,11 @@ class GameStore {
     const run = this.state.run
     
     if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
-      // Apply upgrade immediately when revealed
-      this.applyUpgrade(tile.upgradeData.id)
-      console.log(`Found ${tile.upgradeData.name} upgrade!`)
+      // Show upgrade choice widget instead of applying immediately
+      this.showUpgradeChoice()
+      console.log(`Found upgrade! Choose your enhancement.`)
+      // Set a flag to prevent AI turn until upgrade is chosen
+      this.pendingUpgradeChoice = true
     } else if (tile.content === TileContent.Item && tile.itemData) {
       const item = tile.itemData
       
@@ -249,24 +293,33 @@ class GameStore {
       }
     } else if (tile.content === TileContent.Monster && tile.monsterData) {
       const monster = tile.monsterData
-      const damage = fightMonster(monster, run.attack, run.defense)
-      run.hp = run.hp - damage
+      const damage = fightMonster(monster, run)
+      const newHp = run.hp - damage
       
-      // Award loot bonus for fighting monsters
-      run.gold += run.loot
-      
-      // RICH upgrade: add gold items to adjacent tiles when defeating monsters
-      if (run.upgrades.includes('rich')) {
-        this.applyRichUpgrade(tile.x, tile.y).catch(console.error)
-      }
-      
-      console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${run.loot} gold. HP: ${run.hp}/${run.maxHp}`)
-      
-      // Check for game over
-      if (run.hp <= 0) {
-        console.log('Player died! Game over.')
-        this.setState({ gameStatus: 'player-died' })
-        return
+      // Check if player would die from this damage
+      if (newHp <= 0) {
+        // Try to steal a gold trophy to prevent death
+        if (this.stealGoldTrophy(monster.name)) {
+          run.hp = 1 // Survive with 1 HP instead of taking full damage
+          console.log(`${monster.name} stole a gold trophy! You survive with 1 HP.`)
+          // No loot or Rich upgrade when saved by trophy theft
+        } else {
+          run.hp = newHp // Apply the lethal damage
+          console.log('Player died! Game over.')
+          this.setState({ gameStatus: 'player-died' })
+          return
+        }
+      } else {
+        // Apply damage normally and award loot
+        run.hp = newHp
+        run.gold += run.loot
+        
+        // RICH upgrade: add gold items to adjacent tiles when defeating monsters
+        if (run.upgrades.includes('rich')) {
+          this.applyRichUpgrade(tile.x, tile.y).catch(console.error)
+        }
+        
+        console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${run.loot} gold. HP: ${run.hp}/${run.maxHp}`)
       }
     }
   }
@@ -281,12 +334,43 @@ class GameStore {
       console.log('Rewind is passive - only activates when revealing dangerous tiles')
       return // Do nothing - rewinds are passive items
     } else if (item.id === 'crystal-ball') {
+      // Remove the crystal ball BEFORE revealing the tile to free up inventory space
+      removeItemFromInventory(this.state.run, index)
+      this.setState({ run: { ...this.state.run } })
       this.useCrystalBall()
+      return // Exit early to avoid removing the item again
     } else if (item.id === 'transmute') {
       this.startTransmuteMode(index)
       return // Don't consume the item yet
     } else if (item.id === 'detector') {
       this.startDetectorMode(index)
+      return // Don't consume the item yet
+    } else if (item.id === 'ward') {
+      // Stack ward bonuses
+      this.state.run.temporaryBuffs.ward = (this.state.run.temporaryBuffs.ward || 0) + 4
+      if (!this.state.run.upgrades.includes('ward-temp')) {
+        this.state.run.upgrades.push('ward-temp') // Add to upgrades list for display
+      }
+      console.log(`Ward activated! +4 defense (total: +${this.state.run.temporaryBuffs.ward}) for your next fight.`)
+    } else if (item.id === 'blaze') {
+      // Stack blaze bonuses
+      this.state.run.temporaryBuffs.blaze = (this.state.run.temporaryBuffs.blaze || 0) + 5
+      if (!this.state.run.upgrades.includes('blaze-temp')) {
+        this.state.run.upgrades.push('blaze-temp') // Add to upgrades list for display
+      }
+      console.log(`Blaze activated! +5 attack (total: +${this.state.run.temporaryBuffs.blaze}) for your next fight.`)
+    } else if (item.id === 'protection') {
+      // Stack protection charges
+      this.state.run.temporaryBuffs.protection = (this.state.run.temporaryBuffs.protection || 0) + 1
+      console.log(`Protection activated! Next ${this.state.run.temporaryBuffs.protection} opponent/neutral reveal(s) won't end your turn.`)
+    } else if (item.id === 'clue') {
+      // Grant additional clue
+      this.grantAdditionalClue()
+      console.log('Clue used! You have gained an additional clue.')
+    } else if (item.id === 'whistle') {
+      this.useWhistle()
+    } else if (item.id === 'key') {
+      this.startKeyMode(index)
       return // Don't consume the item yet
     } else {
       const message = applyItemEffect(this.state.run, item)
@@ -295,6 +379,65 @@ class GameStore {
     
     removeItemFromInventory(this.state.run, index)
     this.setState({ run: { ...this.state.run } })
+  }
+
+  // Whistle functionality - redistribute all monsters to random unrevealed tiles
+  private useWhistle(): void {
+    const board = this.state.board
+    const monsters = []
+    
+    // Find all monsters on unrevealed tiles and collect their data
+    for (let y = 0; y < board.height; y++) {
+      for (let x = 0; x < board.width; x++) {
+        const tile = board.tiles[y][x]
+        if (tile.content === TileContent.Monster && !tile.revealed && tile.monsterData) {
+          monsters.push(tile.monsterData)
+          // Clear the monster from this tile
+          tile.content = TileContent.Empty
+          tile.monsterData = undefined
+        }
+      }
+    }
+    
+    if (monsters.length === 0) {
+      console.log('Whistle: No monsters found to redistribute!')
+      return
+    }
+    
+    // Find all unrevealed tiles that can hold monsters
+    const availableTiles = []
+    for (let y = 0; y < board.height; y++) {
+      for (let x = 0; x < board.width; x++) {
+        const tile = board.tiles[y][x]
+        if (!tile.revealed && tile.content === TileContent.Empty) {
+          availableTiles.push({ x, y })
+        }
+      }
+    }
+    
+    if (availableTiles.length === 0) {
+      console.log('Whistle: No available tiles to place monsters!')
+      return
+    }
+    
+    // Redistribute monsters to random available tiles
+    for (const monster of monsters) {
+      if (availableTiles.length === 0) break // No more tiles available
+      
+      const randomIndex = Math.floor(Math.random() * availableTiles.length)
+      const tilePos = availableTiles.splice(randomIndex, 1)[0]
+      const tile = board.tiles[tilePos.y][tilePos.x]
+      
+      tile.content = TileContent.Monster
+      tile.monsterData = monster
+    }
+    
+    console.log(`Whistle: Redistributed ${monsters.length} monsters to new locations!`)
+    
+    // Update the board state
+    this.setState({
+      board: { ...board }
+    })
   }
 
   // Crystal ball functionality - reveal random player tile
@@ -346,6 +489,14 @@ class GameStore {
         }
       }
     }
+  }
+
+  // Grant additional clue functionality
+  private grantAdditionalClue(): void {
+    const newClue = generateClue(this.state.board, this.state.run.upgrades)
+    this.setState({
+      clues: [...this.state.clues, newClue]
+    })
   }
 
   // Start transmute mode
@@ -492,6 +643,70 @@ class GameStore {
     })
   }
 
+  // Start key mode
+  private startKeyMode(itemIndex: number): void {
+    console.log('Key activated! Click any locked tile to unlock it.')
+    this.setState({ 
+      keyMode: true,
+      keyItemIndex: itemIndex // Store which inventory slot to consume
+    })
+  }
+
+  // Handle key tile click
+  useKeyAt(x: number, y: number): boolean {
+    if (!this.state.keyMode) return false
+    
+    const tile = getTileAt(this.state.board, x, y)
+    if (!tile || tile.revealed || !tile.chainData || !tile.chainData.isBlocked) {
+      console.log('Can only use keys on locked tiles!')
+      // Still consume the key even on invalid attempts
+      const itemIndex = (this.state as any).keyItemIndex
+      removeItemFromInventory(this.state.run, itemIndex)
+      this.setState({
+        run: { ...this.state.run },
+        keyMode: false,
+        keyItemIndex: undefined
+      })
+      return false
+    }
+    
+    // Always consume the key item
+    const itemIndex = (this.state as any).keyItemIndex
+    removeItemFromInventory(this.state.run, itemIndex)
+    
+    // Find and remove the corresponding key tile
+    const requiredTileX = tile.chainData.requiredTileX
+    const requiredTileY = tile.chainData.requiredTileY
+    const keyTile = getTileAt(this.state.board, requiredTileX, requiredTileY)
+    
+    if (keyTile && keyTile.chainData) {
+      // Remove chain data from both tiles
+      keyTile.chainData = undefined
+    }
+    tile.chainData = undefined
+    
+    console.log(`Key used! Unlocked tile at (${x}, ${y}) and removed corresponding key.`)
+    
+    // Exit key mode
+    this.setState({
+      board: { ...this.state.board },
+      run: { ...this.state.run },
+      keyMode: false,
+      keyItemIndex: undefined
+    })
+    
+    return true
+  }
+
+  // Cancel key mode
+  cancelKey(): void {
+    console.log('Key cancelled.')
+    this.setState({
+      keyMode: false,
+      keyItemIndex: undefined
+    })
+  }
+
   // Update all existing detector scan results (called when tile ownership changes)
   private updateDetectorScans(): void {
     const board = this.state.board
@@ -532,32 +747,53 @@ class GameStore {
 
   // Shop functionality
   private openShop(): void {
-    // Generate 4 random items + 1 random upgrade with costs scaling by level
+    // Generate items and upgrades with costs scaling by level and Traders bonus
     import('./items').then(({ SHOP_ITEMS }) => {
       import('./upgrades').then(({ getAvailableUpgrades }) => {
-        // Base costs, increased by +1 every 3 levels past level 6
+        // Base costs based on shop number (shops appear on levels 3, 6, 9, 12, 15, 18)
         const level = this.state.run.currentLevel
-        const costIncrease = Math.floor(Math.max(0, level - 6) / 3)
-        const costs = [2 + costIncrease, 3 + costIncrease, 4 + costIncrease, 5 + costIncrease, 7 + costIncrease]
+        const shopNumber = Math.floor(level / 3) // 1st shop (level 3) = 1, 2nd shop (level 6) = 2, etc.
+        
+        // Count Traders upgrades for additional items
+        const tradersCount = this.state.run.upgrades.filter(id => id === 'traders').length
+        const baseItemCount = 4
+        const totalItemCount = baseItemCount + tradersCount
+        
+        // Generate item costs: Level 3: 2,3,4,5 / Level 6: 3,4,5,6 / Level 9: 4,5,6,7 etc.
+        const baseItemCost = 1 + shopNumber // Level 3 = shop 1, base cost 2. Level 6 = shop 2, base cost 3.
+        const itemCosts = []
+        for (let i = 0; i < totalItemCount; i++) {
+          const extraCost = i >= baseItemCount ? i - baseItemCount + 1 : 0 // Traders extra items cost +1 more
+          itemCosts.push(baseItemCost + i + extraCost)
+        }
+        
+        // Generate upgrade costs: Level 3: 7 / Level 6: 8 / Level 9: 9 etc.
+        const baseUpgradeCost = 6 + shopNumber // Level 3 = shop 1, upgrade cost 7. Level 6 = shop 2, upgrade cost 8.
+        const totalUpgradeCount = 1 + tradersCount
+        const upgradeCosts = []
+        for (let i = 0; i < totalUpgradeCount; i++) {
+          upgradeCosts.push(baseUpgradeCost + (i > 0 ? i : 0))
+        }
+        
         const shopItems = []
         
-        // Add 4 random items
-        for (let i = 0; i < 4; i++) {
+        // Add random items
+        for (let i = 0; i < totalItemCount; i++) {
           const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
           shopItems.push({
             item: randomItem,
-            cost: costs[i],
+            cost: itemCosts[i],
             isUpgrade: false
           })
         }
         
-        // Add 1 random upgrade
+        // Add random upgrades
         const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
-        if (availableUpgrades.length > 0) {
+        for (let i = 0; i < totalUpgradeCount && i < availableUpgrades.length; i++) {
           const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
           shopItems.push({
             item: randomUpgrade,
-            cost: costs[4], // 7 gold
+            cost: upgradeCosts[i],
             isUpgrade: true
           })
         }
@@ -639,10 +875,18 @@ class GameStore {
 
   // Close shop
   closeShop(): void {
+    const wasBoardWon = this.state.boardStatus === 'won'
+    
     this.setState({
       shopOpen: false,
       shopItems: []
     })
+    
+    // If board was won while shop was open, trigger progression now
+    if (wasBoardWon) {
+      console.log('Shop closed and board was won - triggering progression')
+      this.handleBoardWon()
+    }
   }
 
   // Apply upgrade effects
@@ -650,7 +894,7 @@ class GameStore {
     const run = { ...this.state.run }
     
     // For repeatable upgrades, add multiple instances; for non-repeatable, only add once
-    const isRepeatable = ['attack', 'defense', 'healthy', 'income'].includes(upgradeId)
+    const isRepeatable = ['attack', 'defense', 'healthy', 'income', 'traders', 'bag', 'left-hand', 'right-hand', 'resting'].includes(upgradeId)
     
     if (isRepeatable || !run.upgrades.includes(upgradeId)) {
       run.upgrades = [...run.upgrades, upgradeId]
@@ -674,11 +918,21 @@ class GameStore {
       case 'income':
         run.loot += 1
         break
-      // QUICK, RICH, and WISDOM are passive and don't need immediate effects
+      case 'bag':
+        run.maxInventory += 1
+        run.inventory.push(null) // Add one more inventory slot
+        break
+      // QUICK, RICH, WISDOM, TRADERS, LEFT_HAND, RIGHT_HAND are passive and don't need immediate effects
       case 'quick':
       case 'rich':
       case 'wisdom':
-        // These are handled at board generation / gameplay time
+      case 'traders':
+      case 'left-hand':
+      case 'right-hand':
+        // These are handled at clue generation / board generation time
+        break
+      case 'resting':
+        // This is handled at tile reveal time
         break
     }
     
@@ -805,8 +1059,10 @@ class GameStore {
       } else if (newBoardStatus === 'lost') {
         this.handleBoardLost()
       } else if (newTurn === 'opponent') {
-        // Trigger AI turn after a short delay (only if turn actually switched)
-        this.scheduleAITurn()
+        // Only trigger AI turn if no upgrade choice is pending
+        if (!this.state.upgradeChoice && !this.pendingUpgradeChoice) {
+          this.scheduleAITurn()
+        }
       }
     }
   }
@@ -841,6 +1097,53 @@ class GameStore {
   // Cancel discard from widget
   cancelDiscard(): void {
     this.setState({ pendingDiscard: null })
+  }
+
+  // Show upgrade choice widget
+  private showUpgradeChoice(): void {
+    // Import available upgrades and pick 3 random ones
+    import('./upgrades').then(({ getAvailableUpgrades }) => {
+      const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
+      
+      // Shuffle and pick 3 random upgrades
+      const shuffled = [...availableUpgrades].sort(() => Math.random() - 0.5)
+      const choices = shuffled.slice(0, 3)
+      
+      this.setState({
+        upgradeChoice: { choices }
+      })
+    })
+  }
+
+  // Choose one of the upgrade options
+  chooseUpgrade(index: number): void {
+    if (!this.state.upgradeChoice || index >= this.state.upgradeChoice.choices.length) return
+    
+    const chosenUpgrade = this.state.upgradeChoice.choices[index]
+    this.applyUpgrade(chosenUpgrade.id)
+    
+    // Check if we need to trigger AI turn after choosing upgrade
+    const shouldTriggerAI = this.state.currentTurn === 'opponent' && 
+                           this.state.gameStatus === 'playing' && 
+                           this.state.boardStatus === 'in-progress'
+    
+    // Clear the upgrade choice widget and pending flag
+    this.pendingUpgradeChoice = false
+    this.setState({
+      upgradeChoice: null
+    })
+    
+    // Now trigger AI turn if needed
+    if (shouldTriggerAI) {
+      this.scheduleAITurn()
+    }
+    
+    console.log(`Chose ${chosenUpgrade.name} upgrade!`)
+  }
+
+  // Cancel upgrade choice (shouldn't normally happen, but for safety)
+  cancelUpgradeChoice(): void {
+    this.setState({ upgradeChoice: null })
   }
 
   // Discard item from inventory (legacy method for direct discard)
@@ -884,6 +1187,7 @@ class GameStore {
     
     // Handle board completion
     if (newBoardStatus === 'won') {
+      this.awardTrophies()
       this.handleBoardWon()
     } else if (newBoardStatus === 'lost') {
       this.handleBoardLost()
@@ -913,6 +1217,105 @@ class GameStore {
     } else if (newBoardStatus === 'lost') {
       this.handleBoardLost()
     }
+  }
+
+  // Award trophies for winning a board
+  awardTrophies(): void {
+    const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
+    const trophiesEarned = Math.max(0, opponentTilesLeft - 1) // N-1 trophies
+    
+    console.log(`Awarding ${trophiesEarned} trophies (${opponentTilesLeft} opponent tiles left)`)
+    console.log(`Current trophies before awarding:`, this.state.run.trophies.length)
+    
+    // Create new trophies array with existing trophies plus new ones
+    const newTrophies = [...this.state.run.trophies]
+    
+    // Add silver trophies
+    for (let i = 0; i < trophiesEarned; i++) {
+      const trophy = {
+        id: `trophy_${Date.now()}_${i}`,
+        type: 'silver' as const,
+        stolen: false
+      }
+      newTrophies.push(trophy)
+    }
+    
+    console.log(`New trophies array length after adding:`, newTrophies.length)
+    
+    // Update state with new trophies array
+    this.setState({
+      run: {
+        ...this.state.run,
+        trophies: newTrophies
+      }
+    })
+    
+    // Collapse trophies if we have 10 or more silver, using the fresh trophies array
+    this.collapseTrophies(newTrophies)
+  }
+  
+  // Collapse 10 silver trophies into 1 gold trophy
+  collapseTrophies(inputTrophies?: any[]): void {
+    let trophies = inputTrophies ? [...inputTrophies] : [...this.state.run.trophies]
+    let silverTrophies = trophies.filter(t => t.type === 'silver' && !t.stolen)
+    let changed = false
+    
+    while (silverTrophies.length >= 10) {
+      // Remove 10 silver trophies
+      for (let i = 0; i < 10; i++) {
+        const silverIndex = trophies.findIndex(t => t.type === 'silver' && !t.stolen)
+        if (silverIndex !== -1) {
+          trophies.splice(silverIndex, 1)
+        }
+      }
+      
+      // Add 1 gold trophy
+      const goldTrophy = {
+        id: `gold_trophy_${Date.now()}`,
+        type: 'gold' as const,
+        stolen: false
+      }
+      trophies.push(goldTrophy)
+      
+      // Update the silver trophies list for next iteration
+      silverTrophies = trophies.filter(t => t.type === 'silver' && !t.stolen)
+      changed = true
+    }
+    
+    if (changed) {
+      this.setState({
+        run: {
+          ...this.state.run,
+          trophies: trophies
+        }
+      })
+    }
+  }
+  
+  // Steal a gold trophy when player would die
+  stealGoldTrophy(monsterName: string): boolean {
+    const goldTrophyIndex = this.state.run.trophies.findIndex(t => t.type === 'gold' && !t.stolen)
+    
+    if (goldTrophyIndex !== -1) {
+      const newTrophies = [...this.state.run.trophies]
+      newTrophies[goldTrophyIndex] = {
+        ...newTrophies[goldTrophyIndex],
+        stolen: true,
+        stolenBy: monsterName
+      }
+      
+      this.setState({
+        run: {
+          ...this.state.run,
+          trophies: newTrophies
+        }
+      })
+      
+      console.log(`${monsterName} stole a gold trophy!`)
+      return true
+    }
+    
+    return false
   }
 }
 

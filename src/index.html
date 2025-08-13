@@ -36,6 +36,7 @@
     
     #board-container {
       display: flex;
+      flex-direction: column;
       justify-content: flex-start;
       align-items: flex-start;
     }
@@ -45,6 +46,23 @@
       background: #222;
       width: 500px;
       height: 375px;
+    }
+    
+    /* Special mode border colors */
+    #game-board.protection-mode {
+      border-color: #4a90e2; /* Blue for Protection */
+    }
+    
+    #game-board.detector-mode {
+      border-color: #50c878; /* Green for Detector */
+    }
+    
+    #game-board.transmute-mode {
+      border-color: #ffd700; /* Yellow for Transmute */
+    }
+    
+    #game-board.key-mode {
+      border-color: #9370db; /* Purple for Key */
     }
     
     #right-panel {
@@ -167,6 +185,40 @@
       background: rgba(0, 255, 0, 0.2) !important;
       box-shadow: 0 0 6px rgba(0, 255, 0, 0.5) !important;
     }
+    
+    .trophy {
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      position: relative;
+    }
+    
+    .trophy.silver {
+      background: transparent;
+      color: #c0c0c0;
+    }
+    
+    .trophy.gold {
+      background: transparent;
+      color: #ffd700;
+    }
+    
+    .trophy.stolen {
+      opacity: 0.5;
+    }
+    
+    .trophy.stolen::after {
+      content: '✗';
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      color: red;
+      font-size: 12px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -176,7 +228,7 @@
   <div id="top-panel">
     <div class="status" style="height: 140px;">
       <div class="status-content">
-        <div id="level-info">Level 1 / 10</div>
+        <div id="level-info">Level 1 / 20</div>
         <div id="hp-info">HP: 100 / 100</div>
         <div id="gold-info">Gold: 0</div>
         <div id="stats-info">Attack: 5 | Defense: 0</div>
@@ -210,10 +262,10 @@
     
     <!-- Shop widget -->
     <div id="shop-widget" class="status" style="height: 200px; display: none; margin-left: 20px;">
-      <div class="status-content">
-        <div style="color: #ffa500; font-weight: bold; margin-bottom: 8px;">🏪 Shop</div>
-        <div id="shop-items" style="display: flex; flex-direction: column; gap: 4px; overflow-y: auto;"></div>
-        <button id="shop-close" style="padding: 6px 12px; margin-top: 8px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Close</button>
+      <div class="status-content" style="height: 100%; display: flex; flex-direction: column;">
+        <div style="color: #ffa500; font-weight: bold; margin-bottom: 8px; flex-shrink: 0;">🏪 Shop</div>
+        <div id="shop-items" style="display: flex; flex-direction: column; gap: 4px; overflow-y: auto; flex: 1; min-height: 0;"></div>
+        <button id="shop-close" style="padding: 6px 12px; margin-top: 8px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; flex-shrink: 0;">Close</button>
       </div>
     </div>
     
@@ -225,6 +277,18 @@
         <div style="display: flex; gap: 10px;">
           <button id="discard-confirm" style="padding: 8px 12px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Discard</button>
           <button id="discard-cancel" style="padding: 8px 12px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer;">Keep</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Upgrade choice widget -->
+    <div id="upgrade-choice-widget" class="status" style="height: 100px; display: none; margin-left: 20px;">
+      <div class="status-content">
+        <div style="color: #ffd700; font-weight: bold; margin-bottom: 10px;">⭐ Upgrade</div>
+        <div id="upgrade-choices" style="display: flex; gap: 8px; justify-content: center;">
+          <button id="upgrade-choice-0" class="upgrade-choice-btn" style="width: 50px; height: 50px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;"></button>
+          <button id="upgrade-choice-1" class="upgrade-choice-btn" style="width: 50px; height: 50px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;"></button>
+          <button id="upgrade-choice-2" class="upgrade-choice-btn" style="width: 50px; height: 50px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;"></button>
         </div>
       </div>
     </div>
@@ -252,8 +316,28 @@
           text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
           z-index: 10;
         ">
-          <div id="overlay-message">Board Cleared!</div>
+          <div id="overlay-message" style="text-align: center; line-height: 1.2;">Board Cleared!</div>
         </div>
+      </div>
+      
+      <!-- Trophy widget below board -->
+      <div id="trophy-widget" style="
+        width: 500px; 
+        background: #333; 
+        border: 2px solid #444; 
+        padding: 10px; 
+        border-radius: 8px; 
+        margin-top: 10px;
+        min-height: 50px;
+      ">
+        <div style="color: #ffd700; font-weight: bold; margin-bottom: 8px; text-align: center;">Trophies</div>
+        <div id="trophies-container" style="
+          display: flex; 
+          flex-wrap: wrap; 
+          gap: 4px; 
+          justify-content: center;
+          align-items: center;
+        "></div>
       </div>
     </div>
     

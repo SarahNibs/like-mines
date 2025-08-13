@@ -1,7 +1,7 @@
 import './style.css'
 import { gameStore } from './store'
 import { GameRenderer } from './renderer'
-import { ALL_UPGRADES } from './upgrades'
+import { ALL_UPGRADES_LOOKUP } from './upgrades'
 
 console.log('Roguelike Minesweeper - Starting up...')
 
@@ -39,6 +39,11 @@ const discardWidget = document.getElementById('discard-widget')!
 const discardMessage = document.getElementById('discard-message')!
 const discardConfirmBtn = document.getElementById('discard-confirm')!
 const discardCancelBtn = document.getElementById('discard-cancel')!
+const upgradeChoiceWidget = document.getElementById('upgrade-choice-widget')!
+const upgradeChoice0Btn = document.getElementById('upgrade-choice-0')!
+const upgradeChoice1Btn = document.getElementById('upgrade-choice-1')!
+const upgradeChoice2Btn = document.getElementById('upgrade-choice-2')!
+const trophiesContainer = document.getElementById('trophies-container')!
 
 // Detector hover tooltip element
 let detectorTooltip: HTMLElement | null = null
@@ -68,7 +73,7 @@ function createDetectorTooltip(): HTMLElement {
 // Show detector tooltip
 function showDetectorTooltip(x: number, y: number, playerCount: number, opponentCount: number, neutralCount: number): void {
   const tooltip = createDetectorTooltip()
-  tooltip.innerHTML = `Detector Scan (3x3 area):<br/>Player tiles: ${playerCount}<br/>Opponent tiles: ${opponentCount}<br/>Neutral tiles: ${neutralCount}`
+  tooltip.innerHTML = `Detector Scan (this tile and adjacent):<br/>Player tiles: ${playerCount}<br/>Opponent tiles: ${opponentCount}<br/>Neutral tiles: ${neutralCount}`
   tooltip.style.left = `${x + 10}px`
   tooltip.style.top = `${y - 10}px`
   tooltip.style.display = 'block'
@@ -125,9 +130,44 @@ function updateUI() {
   
   // Update run progress
   levelInfoEl.textContent = `Level ${state.run.currentLevel} / ${state.run.maxLevel}`
-  hpInfoEl.textContent = `HP: ${state.run.hp} / ${state.run.maxHp}`
-  goldInfoEl.textContent = `Gold: ${state.run.gold}`
-  statsInfoEl.textContent = `Attack: ${state.run.attack} | Defense: ${state.run.defense}`
+  // Calculate resting bonus for HP line display
+  const restingCount = state.run.upgrades.filter(id => id === 'resting').length
+  const restingBonus = restingCount > 0 ? ` | Resting: +${restingCount * 3}` : ''
+  hpInfoEl.textContent = `HP: ${state.run.hp} / ${state.run.maxHp}${restingBonus}`
+  goldInfoEl.textContent = `Gold: ${state.run.gold} | Loot: +${state.run.loot}`
+  // Calculate effective stats including temporary buffs
+  const effectiveAttack = state.run.attack + (state.run.temporaryBuffs.blaze || 0)
+  const effectiveDefense = state.run.defense + (state.run.temporaryBuffs.ward || 0)
+  
+  // Show temporary buffs in the display
+  const attackDisplay = state.run.temporaryBuffs.blaze ? 
+    `${state.run.attack}+${state.run.temporaryBuffs.blaze}` : 
+    state.run.attack.toString()
+  const defenseDisplay = state.run.temporaryBuffs.ward ? 
+    `${state.run.defense}+${state.run.temporaryBuffs.ward}` : 
+    state.run.defense.toString()
+  
+  statsInfoEl.textContent = `Attack: ${attackDisplay} | Defense: ${defenseDisplay}`
+  
+  // Update board border based on active modes
+  canvas.className = '' // Reset all classes
+  const hasProtection = state.run.temporaryBuffs.protection && state.run.temporaryBuffs.protection > 0
+  
+  if (hasProtection) {
+    canvas.classList.add('protection-mode')
+    canvas.title = 'Protection Active: Next reveal won\'t end your turn'
+  } else if (state.detectorMode) {
+    canvas.classList.add('detector-mode')
+    canvas.title = 'Detector Mode: Click any tile to scan adjacent tiles'
+  } else if (state.transmuteMode) {
+    canvas.classList.add('transmute-mode')
+    canvas.title = 'Transmute Mode: Click any tile to convert it to yours'
+  } else if (state.keyMode) {
+    canvas.classList.add('key-mode')
+    canvas.title = 'Key Mode: Click any locked tile to unlock it'
+  } else {
+    canvas.title = ''
+  }
   
   // Update turn info
   if (state.gameStatus === 'run-complete') {
@@ -139,6 +179,9 @@ function updateUI() {
     } else if (state.detectorMode) {
       turnInfoEl.textContent = '📡 DETECTOR MODE: Click tile to scan'
       turnInfoEl.style.color = '#00ffff'
+    } else if (state.keyMode) {
+      turnInfoEl.textContent = '🗝️ KEY MODE: Click locked tile to unlock'
+      turnInfoEl.style.color = '#ffff00'
     } else if (state.boardStatus === 'in-progress') {
       turnInfoEl.textContent = state.currentTurn === 'player' ? "Player's Turn" : "AI's Turn"
       turnInfoEl.style.color = '#ffffff'
@@ -155,7 +198,19 @@ function updateUI() {
   if (state.gameStatus === 'run-complete') {
     winStatusEl.textContent = '🏆 Victory!'
     winStatusEl.style.color = '#ffa500'
-    boardOverlay.style.display = 'none'
+    
+    // Calculate trophy summary
+    const totalTrophiesEarned = state.run.trophies.length
+    const stolenTrophies = state.run.trophies.filter(t => t.stolen).length
+    const keptTrophies = totalTrophiesEarned - stolenTrophies
+    
+    let summaryText = `🏆 Victory!\n\nYou gained ${totalTrophiesEarned} trophies!`
+    if (stolenTrophies > 0) {
+      summaryText += ` (And kept ${keptTrophies} of them)`
+    }
+    
+    overlayMessage.innerHTML = summaryText.replace(/\n/g, '<br>')
+    boardOverlay.style.display = 'flex'
   } else if (state.gameStatus === 'player-died') {
     winStatusEl.textContent = '💀 You Died!'
     winStatusEl.style.color = '#7c4a4a'
@@ -165,8 +220,19 @@ function updateUI() {
   } else if (state.boardStatus === 'won') {
     winStatusEl.textContent = '🎉 Advancing...'
     winStatusEl.style.color = '#4a7c59'
-    // Show overlay message
-    overlayMessage.textContent = '🎉 Board Cleared!'
+    
+    // Calculate trophies earned for overlay message
+    const opponentTilesLeft = state.board.opponentTilesTotal - state.board.opponentTilesRevealed
+    const trophiesEarned = Math.max(0, opponentTilesLeft - 1)
+    
+    let overlayText = ''
+    if (trophiesEarned === 0) {
+      overlayText = '🎉 Whew!'
+    } else {
+      overlayText = '🎉 Board Cleared!\n' + '🏆'.repeat(trophiesEarned)
+    }
+    
+    overlayMessage.innerHTML = overlayText.replace('\n', '<br>')
     boardOverlay.style.display = 'flex'
   } else if (state.boardStatus === 'lost') {
     winStatusEl.textContent = '💀 Run Ends!'
@@ -204,6 +270,12 @@ function updateUI() {
   
   // Update discard widget
   updateDiscardWidget(state)
+  
+  // Update upgrade choice widget
+  updateUpgradeChoiceWidget(state)
+  
+  // Update trophies
+  updateTrophies(state)
   
   // Update clues only when necessary
   let annotatedCount = 0
@@ -261,8 +333,8 @@ function updateInventory(state: any) {
   
   inventoryEl.innerHTML = ''
   
-  // Create inventory slots
-  for (let i = 0; i < 5; i++) {
+  // Create inventory slots based on maxInventory (increased by Bag upgrades)
+  for (let i = 0; i < state.run.maxInventory; i++) {
     const slot = document.createElement('div')
     slot.className = 'inventory-slot'
     const item = state.run.inventory[i]
@@ -307,7 +379,7 @@ function updateUpgrades(state: any) {
   
   // Create upgrade icons synchronously - smaller and more compact for Run Progress box
   currentUpgrades.forEach((upgradeId: string) => {
-    const upgrade = ALL_UPGRADES.find(u => u.id === upgradeId)
+    const upgrade = ALL_UPGRADES_LOOKUP.find(u => u.id === upgradeId)
     if (upgrade) {
       const icon = document.createElement('span')
       icon.textContent = upgrade.icon
@@ -351,6 +423,18 @@ function updateShopWidget(state: any) {
   if (state.shopOpen && state.shopItems.length > 0) {
     shopWidget.style.display = 'block'
     shopItemsEl.innerHTML = ''
+    
+    // Check if board is won while shop is open
+    const isBoardWon = state.boardStatus === 'won'
+    
+    // Update close button text and disable board if board is won
+    if (isBoardWon) {
+      shopCloseBtn.textContent = 'Move on'
+      canvas.style.pointerEvents = 'none' // Disable board interactions
+    } else {
+      shopCloseBtn.textContent = 'Close'
+      canvas.style.pointerEvents = 'auto' // Enable board interactions
+    }
     
     // Create shop item buttons
     state.shopItems.forEach((shopItem: any, index: number) => {
@@ -407,6 +491,8 @@ function updateShopWidget(state: any) {
     })
   } else {
     shopWidget.style.display = 'none'
+    // Re-enable board interactions when shop is closed
+    canvas.style.pointerEvents = 'auto'
   }
 }
 
@@ -417,6 +503,29 @@ function updateDiscardWidget(state: any) {
     discardMessage.textContent = `Discard "${state.pendingDiscard.itemName}"? This action cannot be undone.`
   } else {
     discardWidget.style.display = 'none'
+  }
+}
+
+function updateUpgradeChoiceWidget(state: any) {
+  if (state.upgradeChoice) {
+    upgradeChoiceWidget.style.display = 'block'
+    
+    // Update buttons with just icons and hover tooltips
+    const buttons = [upgradeChoice0Btn, upgradeChoice1Btn, upgradeChoice2Btn]
+    state.upgradeChoice.choices.forEach((upgrade: any, index: number) => {
+      if (index < buttons.length) {
+        buttons[index].textContent = upgrade.icon
+        buttons[index].title = `${upgrade.name}: ${upgrade.description}`
+        buttons[index].style.display = 'flex'
+      }
+    })
+    
+    // Hide unused buttons if there are fewer than 3 choices
+    for (let i = state.upgradeChoice.choices.length; i < buttons.length; i++) {
+      buttons[i].style.display = 'none'
+    }
+  } else {
+    upgradeChoiceWidget.style.display = 'none'
   }
 }
 
@@ -748,6 +857,14 @@ canvas.addEventListener('click', (event) => {
       return // Don't do normal tile reveal
     }
     
+    // Check if we're in key mode
+    if (state.keyMode) {
+      console.log('Key mode: attempting to unlock tile at', tilePos.x, tilePos.y)
+      const success = gameStore.useKeyAt(tilePos.x, tilePos.y)
+      console.log('Key success:', success)
+      return // Don't do normal tile reveal
+    }
+    
     console.log('Attempting to reveal tile at', tilePos.x, tilePos.y, shiftKey ? '(SHIFT bypass)' : '')
     const wasPlayerTurn = state.currentTurn === 'player'
     const success = gameStore.revealTileAt(tilePos.x, tilePos.y, shiftKey)
@@ -786,6 +903,12 @@ canvas.addEventListener('contextmenu', (event) => {
   // Right-click cancels detector mode
   if (state.detectorMode) {
     gameStore.cancelDetector()
+    return
+  }
+  
+  // Right-click cancels key mode
+  if (state.keyMode) {
+    gameStore.cancelKey()
     return
   }
   
@@ -954,7 +1077,7 @@ canvas.addEventListener('mousemove', (event) => {
         showItemTooltip(clientX, clientY, tile.itemData.name, tile.itemData.description)
         itemHover = true
       } else if (tile.upgradeData) {
-        showItemTooltip(clientX, clientY, tile.upgradeData.name, tile.upgradeData.description)
+        showItemTooltip(clientX, clientY, "⭐ Upgrade", "Gain a permanent benefit")
         itemHover = true
       } else if (tile.monsterData) {
         const monster = tile.monsterData
@@ -1087,6 +1210,22 @@ discardCancelBtn.addEventListener('click', () => {
   gameStore.cancelDiscard()
 })
 
+// Upgrade choice widget button handlers
+upgradeChoice0Btn.addEventListener('click', () => {
+  console.log('Player chose upgrade option 0')
+  gameStore.chooseUpgrade(0)
+})
+
+upgradeChoice1Btn.addEventListener('click', () => {
+  console.log('Player chose upgrade option 1')
+  gameStore.chooseUpgrade(1)
+})
+
+upgradeChoice2Btn.addEventListener('click', () => {
+  console.log('Player chose upgrade option 2')
+  gameStore.chooseUpgrade(2)
+})
+
 // General click handler to clear highlights when clicking outside clue areas
 document.addEventListener('click', (event) => {
   const target = event.target as Element
@@ -1122,5 +1261,39 @@ console.log('Board dimensions:', initialState.board.width, 'x', initialState.boa
 console.log('Player tiles total:', initialState.board.playerTilesTotal)
 console.log('Opponent tiles total:', initialState.board.opponentTilesTotal)
 console.log('First few tiles:', initialState.board.tiles[0].slice(0, 3))
+
+// Update trophies display
+function updateTrophies(state: any) {
+  console.log('Updating trophies display. Trophy count:', state.run.trophies.length)
+  trophiesContainer.innerHTML = ''
+  
+  state.run.trophies.forEach((trophy: any, index: number) => {
+    const trophyEl = document.createElement('div')
+    trophyEl.className = `trophy ${trophy.type}`
+    if (trophy.stolen) {
+      trophyEl.classList.add('stolen')
+    }
+    
+    // Set trophy icon based on type
+    if (trophy.type === 'gold') {
+      trophyEl.textContent = '🏆'
+    } else {
+      trophyEl.textContent = '🥈'  // Silver medal for silver trophies
+    }
+    
+    // Set tooltip - explicitly set it
+    let tooltipText = ''
+    if (trophy.stolen) {
+      tooltipText = `Stolen by ${trophy.stolenBy}`
+    } else if (trophy.type === 'gold') {
+      tooltipText = 'Victories!'
+    } else {
+      tooltipText = 'Victory!'
+    }
+    trophyEl.setAttribute('title', tooltipText)
+    
+    trophiesContainer.appendChild(trophyEl)
+  })
+}
 
 console.log('Game initialized - board rendered!')
