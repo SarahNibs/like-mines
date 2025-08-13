@@ -41,27 +41,64 @@ export function generateClue(board: Board, ownedUpgrades: string[] = []): Probab
   const rightHandPlayerTiles = 1 + rightHandBonus  
   const rightHandNonPlayerTiles = 1
 
+  // Separate neutral and opponent tiles for better filling logic
+  const neutralTiles = nonPlayerTiles.filter(tile => tile.owner === 'neutral')
+  const opponentTiles = nonPlayerTiles.filter(tile => tile.owner === 'opponent')
+  
   // Shuffle available tiles
   const shuffledPlayerTiles = [...playerTiles].sort(() => Math.random() - 0.5)
-  const shuffledNonPlayerTiles = [...nonPlayerTiles].sort(() => Math.random() - 0.5)
+  const shuffledNeutralTiles = [...neutralTiles].sort(() => Math.random() - 0.5)
+  const shuffledOpponentTiles = [...opponentTiles].sort(() => Math.random() - 0.5)
 
-  // Build hands
+  // Build hands with proper filling logic
   const handA: Tile[] = []
   const handB: Tile[] = []
 
-  // Add player tiles to each hand (respecting available tiles)
-  const availablePlayerTilesForA = Math.min(leftHandPlayerTiles, shuffledPlayerTiles.length)
-  handA.push(...shuffledPlayerTiles.slice(0, availablePlayerTilesForA))
+  // Target sizes for each hand
+  const targetHandASize = leftHandPlayerTiles + leftHandNonPlayerTiles
+  const targetHandBSize = rightHandPlayerTiles + rightHandNonPlayerTiles
+
+  // Fill Hand A
+  let playerTilesUsed = 0
+  // Add player tiles to Hand A
+  const playerTilesForA = Math.min(leftHandPlayerTiles, shuffledPlayerTiles.length - playerTilesUsed)
+  handA.push(...shuffledPlayerTiles.slice(playerTilesUsed, playerTilesUsed + playerTilesForA))
+  playerTilesUsed += playerTilesForA
+
+  // Fill remaining Hand A slots with neutral tiles, then opponent tiles
+  let neutralTilesUsed = 0
+  let opponentTilesUsed = 0
   
-  const availablePlayerTilesForB = Math.min(rightHandPlayerTiles, shuffledPlayerTiles.length - availablePlayerTilesForA)
-  handB.push(...shuffledPlayerTiles.slice(availablePlayerTilesForA, availablePlayerTilesForA + availablePlayerTilesForB))
+  while (handA.length < targetHandASize) {
+    if (neutralTilesUsed < shuffledNeutralTiles.length) {
+      handA.push(shuffledNeutralTiles[neutralTilesUsed])
+      neutralTilesUsed++
+    } else if (opponentTilesUsed < shuffledOpponentTiles.length) {
+      handA.push(shuffledOpponentTiles[opponentTilesUsed])
+      opponentTilesUsed++
+    } else {
+      break // No more tiles available
+    }
+  }
 
-  // Add non-player tiles to each hand
-  const availableNonPlayerTilesForA = Math.min(leftHandNonPlayerTiles, shuffledNonPlayerTiles.length)
-  handA.push(...shuffledNonPlayerTiles.slice(0, availableNonPlayerTilesForA))
+  // Fill Hand B
+  // Add player tiles to Hand B
+  const playerTilesForB = Math.min(rightHandPlayerTiles, shuffledPlayerTiles.length - playerTilesUsed)
+  handB.push(...shuffledPlayerTiles.slice(playerTilesUsed, playerTilesUsed + playerTilesForB))
+  playerTilesUsed += playerTilesForB
 
-  const availableNonPlayerTilesForB = Math.min(rightHandNonPlayerTiles, shuffledNonPlayerTiles.length - availableNonPlayerTilesForA)
-  handB.push(...shuffledNonPlayerTiles.slice(availableNonPlayerTilesForA, availableNonPlayerTilesForA + availableNonPlayerTilesForB))
+  // Fill remaining Hand B slots with neutral tiles, then opponent tiles  
+  while (handB.length < targetHandBSize) {
+    if (neutralTilesUsed < shuffledNeutralTiles.length) {
+      handB.push(shuffledNeutralTiles[neutralTilesUsed])
+      neutralTilesUsed++
+    } else if (opponentTilesUsed < shuffledOpponentTiles.length) {
+      handB.push(shuffledOpponentTiles[opponentTilesUsed])
+      opponentTilesUsed++
+    } else {
+      break // No more tiles available
+    }
+  }
 
   // Shuffle each hand
   handA.sort(() => Math.random() - 0.5)

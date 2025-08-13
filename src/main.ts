@@ -3,7 +3,7 @@ import { gameStore } from './store'
 import { GameRenderer } from './renderer'
 import { ALL_UPGRADES_LOOKUP } from './upgrades'
 
-console.log('Roguelike Minesweeper - Starting up...')
+console.log('Emdash Delve - Starting up...')
 
 // Get canvas and initialize renderer
 const canvas = document.getElementById('game-board') as HTMLCanvasElement
@@ -41,6 +41,8 @@ const upgradeChoice0Btn = document.getElementById('upgrade-choice-0')!
 const upgradeChoice1Btn = document.getElementById('upgrade-choice-1')!
 const upgradeChoice2Btn = document.getElementById('upgrade-choice-2')!
 const trophiesContainer = document.getElementById('trophies-container')!
+const characterSelectOverlay = document.getElementById('character-select-overlay')!
+const characterChoicesEl = document.getElementById('character-choices')!
 
 // Detector hover tooltip element
 let detectorTooltip: HTMLElement | null = null
@@ -162,6 +164,12 @@ function updateUI() {
   } else if (state.keyMode) {
     canvas.classList.add('key-mode')
     canvas.title = 'Key Mode: Click any locked tile to unlock it'
+  } else if (state.staffMode) {
+    canvas.classList.add('staff-mode')
+    canvas.title = 'Staff Mode: Click any monster to attack it'
+  } else if (state.ringMode) {
+    canvas.classList.add('ring-mode')
+    canvas.title = 'Ring Mode: Click any fogged tile to remove fog'
   } else {
     canvas.title = ''
   }
@@ -242,8 +250,20 @@ function updateUI() {
     boardOverlay.style.display = 'none'
   }
   
-  // Update tile counts
-  playerTilesEl.textContent = `Player tiles: ${board.playerTilesRevealed}/${board.playerTilesTotal}`
+  // Update tile counts with character info
+  if (state.run.characterId) {
+    // Import character data to get icon and name
+    import('./characters').then(({ ALL_CHARACTERS }) => {
+      const character = ALL_CHARACTERS.find(c => c.id === state.run.characterId)
+      if (character) {
+        playerTilesEl.textContent = `${character.icon} ${character.name}: ${board.playerTilesRevealed}/${board.playerTilesTotal}`
+      } else {
+        playerTilesEl.textContent = `Player tiles: ${board.playerTilesRevealed}/${board.playerTilesTotal}`
+      }
+    })
+  } else {
+    playerTilesEl.textContent = `Player tiles: ${board.playerTilesRevealed}/${board.playerTilesTotal}`
+  }
   opponentTilesEl.textContent = `AI tiles: ${board.opponentTilesRevealed}/${board.opponentTilesTotal}`
   
   // Show/hide End Turn button
@@ -270,6 +290,9 @@ function updateUI() {
   // Update upgrade choice widget
   updateUpgradeChoiceWidget(state)
   
+  // Update character selection
+  updateCharacterSelection(state)
+  
   // Update trophies
   updateTrophies(state)
   
@@ -277,14 +300,17 @@ function updateUI() {
   let annotatedCount = 0
   for (let y = 0; y < state.board.height; y++) {
     for (let x = 0; x < state.board.width; x++) {
-      if (state.board.tiles[y][x].annotated) annotatedCount++
+      if (state.board.tiles[y][x].annotated !== 'none') annotatedCount++
     }
   }
   
   const currentCluesHash = JSON.stringify({
     cluesLength: state.clues.length,
     revealedCount: state.board.playerTilesRevealed + state.board.opponentTilesRevealed,
-    annotatedCount: annotatedCount
+    annotatedCount: annotatedCount,
+    leftHandUpgrades: state.run.upgrades.filter(id => id === 'left-hand').length,
+    rightHandUpgrades: state.run.upgrades.filter(id => id === 'right-hand').length,
+    characterId: state.run.characterId || 'none'
   })
   
   if (window.lastCluesHash !== currentCluesHash) {
@@ -339,8 +365,14 @@ function updateInventory(state: any) {
     const item = state.run.inventory[i]
     
     if (item) {
-      slot.textContent = item.icon
-      slot.title = `${item.name}: ${item.description}\nRight-click to discard`
+      // Display icon with charge count for multi-use items
+      if (item.multiUse) {
+        slot.innerHTML = `${item.icon}<span class="charge-counter">${item.multiUse.currentUses}</span>`
+        slot.title = `${item.name}: ${item.description} (${item.multiUse.currentUses}/${item.multiUse.maxUses} uses)\nRight-click to discard`
+      } else {
+        slot.textContent = item.icon
+        slot.title = `${item.name}: ${item.description}\nRight-click to discard`
+      }
       slot.addEventListener('click', () => gameStore.useInventoryItem(i))
       slot.addEventListener('contextmenu', (e) => {
         e.preventDefault()
@@ -427,30 +459,22 @@ function updateShopWidget(state: any) {
       canvas.style.pointerEvents = 'auto' // Enable board interactions
     }
     
-    // Create shop item buttons
-    state.shopItems.forEach((shopItem: any, index: number) => {
+    // Create shop item buttons (show only first 3 items)
+    state.shopItems.slice(0, 3).forEach((shopItem: any, index: number) => {
       const itemEl = document.createElement('div')
       itemEl.style.display = 'flex'
       itemEl.style.alignItems = 'center'
       itemEl.style.justifyContent = 'space-between'
-      itemEl.style.padding = '4px'
+      itemEl.style.padding = '6px'
       itemEl.style.border = '1px solid #666'
       itemEl.style.borderRadius = '2px'
       itemEl.style.background = '#444'
-      
-      const itemInfo = document.createElement('div')
-      itemInfo.style.display = 'flex'
-      itemInfo.style.alignItems = 'center'
-      itemInfo.style.gap = '6px'
-      
-      const itemIcon = document.createElement('span')
-      itemIcon.textContent = shopItem.item.icon
-      itemIcon.style.fontSize = '16px'
-      itemIcon.title = `${shopItem.item.name}: ${shopItem.item.description}`
+      itemEl.style.minHeight = '32px'
       
       const itemName = document.createElement('span')
       itemName.textContent = shopItem.item.name
-      itemName.style.fontSize = '12px'
+      itemName.style.fontSize = '14px'
+      itemName.title = `${shopItem.item.name}: ${shopItem.item.description}`
       
       const buyBtn = document.createElement('button')
       buyBtn.textContent = `${shopItem.cost}g`
@@ -474,9 +498,7 @@ function updateShopWidget(state: any) {
         buyBtn.title = 'Not enough gold'
       }
       
-      itemInfo.appendChild(itemIcon)
-      itemInfo.appendChild(itemName)
-      itemEl.appendChild(itemInfo)
+      itemEl.appendChild(itemName)
       itemEl.appendChild(buyBtn)
       shopItemsEl.appendChild(itemEl)
     })
@@ -517,6 +539,79 @@ function updateUpgradeChoiceWidget(state: any) {
     }
   } else {
     upgradeChoiceWidget.style.display = 'none'
+  }
+}
+
+// Update character selection display
+async function updateCharacterSelection(state: any) {
+  if (state.gameStatus === 'character-select') {
+    characterSelectOverlay.style.display = 'flex'
+    
+    // Import character data
+    const { ALL_CHARACTERS } = await import('./characters')
+    
+    // Clear existing choices
+    characterChoicesEl.innerHTML = ''
+    
+    // Create character buttons
+    ALL_CHARACTERS.forEach((character: any) => {
+      const characterBtn = document.createElement('button')
+      characterBtn.style.cssText = `
+        width: 120px;
+        height: 120px;
+        background: #444;
+        border: 2px solid #666;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: white;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        transition: all 0.2s ease;
+        position: relative;
+      `
+      
+      const characterIcon = document.createElement('div')
+      characterIcon.textContent = character.icon
+      characterIcon.style.fontSize = '32px'
+      
+      const characterName = document.createElement('div')
+      characterName.textContent = character.name
+      characterName.style.fontWeight = 'bold'
+      characterName.style.fontSize = '14px'
+      
+      // Hover tooltip
+      characterBtn.title = character.description
+      
+      // Hover effects
+      characterBtn.addEventListener('mouseenter', () => {
+        characterBtn.style.borderColor = '#ffa500'
+        characterBtn.style.background = '#555'
+        characterBtn.style.transform = 'scale(1.05)'
+      })
+      
+      characterBtn.addEventListener('mouseleave', () => {
+        characterBtn.style.borderColor = '#666'
+        characterBtn.style.background = '#444'
+        characterBtn.style.transform = 'scale(1)'
+      })
+      
+      // Click handler
+      characterBtn.addEventListener('click', () => {
+        console.log(`Selected character: ${character.id}`)
+        gameStore.selectCharacter(character.id)
+      })
+      
+      characterBtn.appendChild(characterIcon)
+      characterBtn.appendChild(characterName)
+      characterChoicesEl.appendChild(characterBtn)
+    })
+  } else {
+    characterSelectOverlay.style.display = 'none'
   }
 }
 
@@ -584,8 +679,8 @@ function updateClues(state: any) {
       tileEl.style.cursor = 'pointer'
       tileEl.style.position = 'relative'
       
-      // Show annotation if tile is annotated (diagonal slash like board)
-      if (boardTile.annotated) {
+      // Show annotation if tile is annotated (matching board tile state)
+      if (boardTile.annotated === 'slash') {
         const slash = document.createElement('div')
         slash.style.position = 'absolute'
         slash.style.top = '0'
@@ -607,6 +702,18 @@ function updateClues(state: any) {
         
         slash.appendChild(slashLine)
         tileEl.appendChild(slash)
+      } else if (boardTile.annotated === 'dog-ear') {
+        const dogEar = document.createElement('div')
+        dogEar.style.position = 'absolute'
+        dogEar.style.top = '2px'
+        dogEar.style.right = '2px'
+        dogEar.style.width = '16px'
+        dogEar.style.height = '16px'
+        dogEar.style.backgroundColor = '#90ee90'
+        dogEar.style.borderRadius = '0 0 0 50%'
+        dogEar.style.pointerEvents = 'none'
+        
+        tileEl.appendChild(dogEar)
       }
       
       // Hover effects - highlight whole hand, with this tile extra highlighted
@@ -700,8 +807,8 @@ function updateClues(state: any) {
       tileEl.style.cursor = 'pointer'
       tileEl.style.position = 'relative'
       
-      // Show annotation if tile is annotated (diagonal slash like board)
-      if (boardTile.annotated) {
+      // Show annotation if tile is annotated (matching board tile state)
+      if (boardTile.annotated === 'slash') {
         const slash = document.createElement('div')
         slash.style.position = 'absolute'
         slash.style.top = '0'
@@ -723,6 +830,18 @@ function updateClues(state: any) {
         
         slash.appendChild(slashLine)
         tileEl.appendChild(slash)
+      } else if (boardTile.annotated === 'dog-ear') {
+        const dogEar = document.createElement('div')
+        dogEar.style.position = 'absolute'
+        dogEar.style.top = '2px'
+        dogEar.style.right = '2px'
+        dogEar.style.width = '16px'
+        dogEar.style.height = '16px'
+        dogEar.style.backgroundColor = '#90ee90'
+        dogEar.style.borderRadius = '0 0 0 50%'
+        dogEar.style.pointerEvents = 'none'
+        
+        tileEl.appendChild(dogEar)
       }
       
       // Hover effects - highlight whole hand, with this tile extra highlighted
@@ -866,6 +985,22 @@ canvas.addEventListener('click', (event) => {
       return // Don't do normal tile reveal
     }
     
+    // Check if we're in staff mode
+    if (state.staffMode) {
+      console.log('Staff mode: attempting to target monster at', tilePos.x, tilePos.y)
+      const success = gameStore.useStaffAt(tilePos.x, tilePos.y)
+      console.log('Staff success:', success)
+      return // Don't do normal tile reveal
+    }
+    
+    // Check if we're in ring mode
+    if (state.ringMode) {
+      console.log('Ring mode: attempting to remove fog at', tilePos.x, tilePos.y)
+      const success = gameStore.useRingAt(tilePos.x, tilePos.y)
+      console.log('Ring success:', success)
+      return // Don't do normal tile reveal
+    }
+    
     console.log('Attempting to reveal tile at', tilePos.x, tilePos.y, shiftKey ? '(SHIFT bypass)' : '')
     const wasPlayerTurn = state.currentTurn === 'player'
     const success = gameStore.revealTileAt(tilePos.x, tilePos.y, shiftKey)
@@ -910,6 +1045,17 @@ canvas.addEventListener('contextmenu', (event) => {
   // Right-click cancels key mode
   if (state.keyMode) {
     gameStore.cancelKey()
+    return
+  }
+  
+  // Right-click cancels staff or ring mode
+  if (state.staffMode) {
+    gameStore.cancelStaff()
+    return
+  }
+  
+  if (state.ringMode) {
+    gameStore.cancelRing()
     return
   }
   
@@ -1041,50 +1187,69 @@ canvas.addEventListener('mousemove', (event) => {
   
   if (tilePos) {
     const tile = state.board.tiles[tilePos.y][tilePos.x]
-    // Get actual renderer properties
-    const tileSize = renderer.getTileSize()
-    const startX = renderer.getStartX()
-    const startY = renderer.getStartY()
-    const gap = renderer.getGap()
     
-    // Check detector scan first (takes priority)
-    if (isMouseOverDetectorScan(mouseX, mouseY, tile, tileSize, startX, startY, gap)) {
-      const clientX = event.clientX
-      const clientY = event.clientY
-      showDetectorTooltip(clientX, clientY, tile.detectorScan.playerAdjacent, tile.detectorScan.opponentAdjacent, tile.detectorScan.neutralAdjacent)
-      detectorHover = true
-    } else if (isMouseOverChainIndicator(mouseX, mouseY, tile, tileSize, startX, startY, gap, state.board)) {
-      const clientX = event.clientX
-      const clientY = event.clientY
+    // Skip all hover effects for fogged tiles except detector scans
+    if (tile.fogged && !tile.revealed) {
+      // Get actual renderer properties for detector check only
+      const tileSize = renderer.getTileSize()
+      const startX = renderer.getStartX()
+      const startY = renderer.getStartY()
+      const gap = renderer.getGap()
       
-      // Show chain tooltip
-      const chainData = tile.chainData
-      
-      if (chainData.isBlocked) {
-        const title = "🔒 Chained Tile"
-        const description = "This tile is locked! Must reveal the connected tile first."
-        showItemTooltip(clientX, clientY, title, description)
-      } else {
-        const title = "🔑 Chain Key"
-        const description = "This tile unlocks a chained tile."
-        showItemTooltip(clientX, clientY, title, description)
+      // Only allow detector scan hover for fogged tiles
+      if (isMouseOverDetectorScan(mouseX, mouseY, tile, tileSize, startX, startY, gap)) {
+        const clientX = event.clientX
+        const clientY = event.clientY
+        showDetectorTooltip(clientX, clientY, tile.detectorScan.playerAdjacent, tile.detectorScan.opponentAdjacent, tile.detectorScan.neutralAdjacent)
+        detectorHover = true
       }
-      itemHover = true
-    } else if (isMouseOverTileContent(mouseX, mouseY, tile, tileSize, startX, startY, gap)) {
-      const clientX = event.clientX
-      const clientY = event.clientY
+    } else {
+      // Normal hover handling for non-fogged tiles
+      // Get actual renderer properties
+      const tileSize = renderer.getTileSize()
+      const startX = renderer.getStartX()
+      const startY = renderer.getStartY()
+      const gap = renderer.getGap()
       
-      if (tile.itemData) {
-        showItemTooltip(clientX, clientY, tile.itemData.name, tile.itemData.description)
+      // Check detector scan first (takes priority)
+      if (isMouseOverDetectorScan(mouseX, mouseY, tile, tileSize, startX, startY, gap)) {
+        const clientX = event.clientX
+        const clientY = event.clientY
+        showDetectorTooltip(clientX, clientY, tile.detectorScan.playerAdjacent, tile.detectorScan.opponentAdjacent, tile.detectorScan.neutralAdjacent)
+        detectorHover = true
+      } else if (isMouseOverChainIndicator(mouseX, mouseY, tile, tileSize, startX, startY, gap, state.board)) {
+        const clientX = event.clientX
+        const clientY = event.clientY
+        
+        // Show chain tooltip
+        const chainData = tile.chainData
+        
+        if (chainData.isBlocked) {
+          const title = "🔒 Chained Tile"
+          const description = "This tile is locked! Must reveal the connected tile first."
+          showItemTooltip(clientX, clientY, title, description)
+        } else {
+          const title = "🔑 Chain Key"
+          const description = "This tile unlocks a chained tile."
+          showItemTooltip(clientX, clientY, title, description)
+        }
         itemHover = true
-      } else if (tile.upgradeData) {
-        showItemTooltip(clientX, clientY, "⭐ Upgrade", "Gain a permanent benefit")
-        itemHover = true
-      } else if (tile.monsterData) {
-        const monster = tile.monsterData
-        const description = `Attack: ${monster.attack} | Defense: ${monster.defense} | HP: ${monster.hp}`
-        showItemTooltip(clientX, clientY, monster.name, description)
-        itemHover = true
+      } else if (isMouseOverTileContent(mouseX, mouseY, tile, tileSize, startX, startY, gap)) {
+        const clientX = event.clientX
+        const clientY = event.clientY
+        
+        if (tile.itemData) {
+          showItemTooltip(clientX, clientY, tile.itemData.name, tile.itemData.description)
+          itemHover = true
+        } else if (tile.upgradeData) {
+          showItemTooltip(clientX, clientY, "⭐ Upgrade", "Gain a permanent benefit")
+          itemHover = true
+        } else if (tile.monsterData) {
+          const monster = tile.monsterData
+          const description = `Attack: ${monster.attack} | Defense: ${monster.defense} | HP: ${monster.hp}`
+          showItemTooltip(clientX, clientY, monster.name, description)
+          itemHover = true
+        }
       }
     }
   }
@@ -1306,5 +1471,17 @@ function updateTrophies(state: any) {
     trophiesContainer.appendChild(trophyEl)
   })
 }
+
+// Debug controls toggle with 'd' key
+document.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'd') {
+    const debugControls = document.getElementById('debug-controls')
+    if (debugControls) {
+      const isVisible = debugControls.style.display !== 'none'
+      debugControls.style.display = isVisible ? 'none' : 'block'
+      console.log(`Debug controls ${isVisible ? 'hidden' : 'shown'}`)
+    }
+  }
+})
 
 console.log('Game initialized - board rendered!')

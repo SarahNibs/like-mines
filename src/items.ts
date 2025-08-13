@@ -108,6 +108,30 @@ export const CLUE: ItemData = {
   immediate: false
 }
 
+export const STAFF_OF_FIREBALLS: ItemData = {
+  id: 'staff-of-fireballs',
+  name: 'Staff of Fireballs',
+  description: 'Deals 6 damage to any monster, bypassing defense (3 uses)',
+  icon: '🏹',
+  immediate: false,
+  multiUse: {
+    maxUses: 3,
+    currentUses: 3
+  }
+}
+
+export const RING_OF_TRUE_SEEING: ItemData = {
+  id: 'ring-of-true-seeing',
+  name: 'Ring of True Seeing',
+  description: 'Removes fog from any tile, revealing what lies beneath (6 uses)',
+  icon: '💍',
+  immediate: false,
+  multiUse: {
+    maxUses: 6,
+    currentUses: 6
+  }
+}
+
 // =============================================================================
 // ITEM COLLECTIONS
 // =============================================================================
@@ -117,12 +141,12 @@ export const ALL_ITEMS: ItemData[] = [
   // Immediate items
   GOLD_COIN, FIRST_AID, SHOP,
   // Inventory items  
-  CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
+  CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
 ]
 
 // Items available for purchase in shops (excludes shop itself, gold, and negative items like bear traps)
 export const SHOP_ITEMS: ItemData[] = [
-  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
+  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
 ]
 
 // =============================================================================

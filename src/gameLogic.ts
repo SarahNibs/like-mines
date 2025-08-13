@@ -2,6 +2,7 @@ import { Board, Tile, TileOwner, TileContent, GameState, RunState, getTileAt, ge
 import { PROTECTION } from './items'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
+import { ALL_CHARACTERS } from './characters'
 
 // Get adjacent tile positions (8-directional)
 function getAdjacentPositions(x: number, y: number): Array<{x: number, y: number}> {
@@ -64,7 +65,7 @@ export function checkBoardStatus(board: Board): 'in-progress' | 'won' | 'lost' {
   return 'in-progress'
 }
 
-// Create initial run state
+// Create initial run state (placeholder for character selection)
 export function createInitialRunState(): RunState {
   return {
     currentLevel: 1,
@@ -76,12 +77,73 @@ export function createInitialRunState(): RunState {
     attack: 5, // Starting attack power
     defense: 0, // Starting defense
     loot: 0, // Starting loot bonus per opponent tile/monster
-    inventory: [PROTECTION, PROTECTION, null, null, null], // Start with 2 Protection scrolls
+    inventory: [null, null, null, null, null], // Empty inventory for character selection
     maxInventory: 5, // Starting with 5 inventory slots
     upgrades: [], // No upgrades initially
     trophies: [], // No trophies initially
     temporaryBuffs: {} // No temporary buffs initially
   }
+}
+
+// Create character-specific run state
+export function createCharacterRunState(characterId: string): RunState {
+  // Find character from imported data
+  const character = ALL_CHARACTERS.find(c => c.id === characterId)
+  
+  if (!character) {
+    throw new Error(`Unknown character: ${characterId}`)
+  }
+  
+  // Create base run state
+  const runState = createInitialRunState()
+  
+  // Store character ID for display
+  runState.characterId = characterId
+  
+  // Apply character-specific upgrades and their effects
+  runState.upgrades = [...character.startingUpgrades]
+  
+  // Apply upgrade effects to stats
+  character.startingUpgrades.forEach(upgradeId => {
+    switch (upgradeId) {
+      case 'attack':
+        runState.attack += 2
+        break
+      case 'defense':
+        runState.defense += 1
+        break
+      case 'healthy':
+        runState.maxHp += 25
+        runState.hp += 25 // Also increase current HP
+        break
+      case 'income':
+        runState.loot += 1
+        break
+      case 'bag':
+        runState.maxInventory += 1
+        runState.inventory.push(null) // Add one more inventory slot
+        break
+      // QUICK, RICH, WISDOM, TRADERS, LEFT_HAND, RIGHT_HAND, RESTING are passive
+      case 'quick':
+      case 'rich':
+      case 'wisdom':
+      case 'traders':
+      case 'left-hand':
+      case 'right-hand':
+      case 'resting':
+        // These are handled during board generation or other game events
+        break
+    }
+  })
+  
+  // Fill inventory with character items plus base Scroll of Protection
+  const allStartingItems = [PROTECTION, ...character.startingItems]
+  
+  for (let i = 0; i < allStartingItems.length && i < runState.maxInventory; i++) {
+    runState.inventory[i] = allStartingItems[i]
+  }
+  
+  return runState
 }
 
 // Create initial game state
@@ -101,6 +163,8 @@ export function createInitialGameState(): GameState {
     transmuteMode: false,
     detectorMode: false,
     keyMode: false,
+    staffMode: false,
+    ringMode: false,
     shopOpen: false,
     shopItems: []
   }

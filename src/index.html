@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Roguelike Minesweeper</title>
+  <title>Emdash Delve</title>
   <style>
     body {
       margin: 0;
@@ -63,6 +63,14 @@
     
     #game-board.key-mode {
       border-color: #9370db; /* Purple for Key */
+    }
+    
+    #game-board.staff-mode {
+      border-color: #ff0000; /* Red for Staff of Fireballs */
+    }
+    
+    #game-board.ring-mode {
+      border-color: #9400d3; /* Purple for Ring of True Seeing */
     }
     
     #right-panel {
@@ -165,6 +173,21 @@
       background: #333;
     }
     
+    .charge-counter {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      background: #ffa500;
+      color: #000;
+      font-size: 10px;
+      font-weight: bold;
+      padding: 1px 3px;
+      border-radius: 6px;
+      min-width: 12px;
+      text-align: center;
+      line-height: 1;
+    }
+    
     .inventory-tooltip {
       position: absolute;
       top: -60px;
@@ -222,7 +245,7 @@
   </style>
 </head>
 <body>
-  <h1>Roguelike Minesweeper</h1>
+  <h1>Emdash Delve</h1>
   
   <!-- Top area: Global run info -->
   <div id="top-panel">
@@ -239,7 +262,7 @@
     </div>
     
     <!-- Debug controls -->
-    <div class="status" style="height: 140px; margin-left: 20px;">
+    <div id="debug-controls" class="status" style="height: 140px; margin-left: 20px; display: none;">
       <div class="status-content">
         <button id="reveal-all-player" style="padding: 8px; margin: 4px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer;">Win Board</button>
         <button id="reveal-all-opponent" style="padding: 8px; margin: 4px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Lose Board</button>
@@ -289,6 +312,32 @@
     <div id="board-container">
       <div style="position: relative;">
         <canvas id="game-board" width="500" height="375"></canvas>
+        
+        <!-- Character selection overlay -->
+        <div id="character-select-overlay" style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.9);
+          display: none;
+          align-items: center;
+          justify-content: center;
+          z-index: 15;
+        ">
+          <div style="text-align: center; color: #ffa500;">
+            <h2 style="margin-bottom: 20px; font-size: 24px;">Choose Your Character</h2>
+            <div id="character-choices" style="
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 20px;
+              max-width: 450px;
+            ">
+              <!-- Character buttons will be populated here -->
+            </div>
+          </div>
+        </div>
         
         <!-- Board status overlay -->
         <div id="board-overlay" style="

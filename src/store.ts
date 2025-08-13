@@ -1,5 +1,5 @@
 import { GameState, getTileAt, TileContent } from './types'
-import { createInitialGameState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect } from './gameLogic'
+import { createInitialGameState, createCharacterRunState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect } from './gameLogic'
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
 
@@ -13,6 +13,7 @@ class GameStore {
 
   constructor() {
     this.state = createInitialGameState()
+    this.state.gameStatus = 'character-select' // Start in character selection
     this.ai = new DumbAI()
   }
 
@@ -106,20 +107,17 @@ class GameStore {
         return // Exit early if player died
       }
       
+      // Consume Protection charge on ANY tile reveal (if active)
+      if (this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0) {
+        this.state.run.temporaryBuffs.protection -= 1
+        console.log(`Protection consumed! ${this.state.run.temporaryBuffs.protection} charges remaining.`)
+      }
+      
       // Player continues turn if they revealed their own tile, otherwise switch to AI
-      // BUT if player has Protection and revealed opponent/neutral tile, consume Protection and stay on player turn
       let newTurn = 'player'
       if (newBoardStatus === 'in-progress' && !isPlayerTile) {
-        // Player revealed opponent/neutral tile - normally would end turn
-        if (this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0) {
-          // Consume Protection charge and stay on player turn
-          this.state.run.temporaryBuffs.protection -= 1
-          console.log(`Protection consumed! ${this.state.run.temporaryBuffs.protection} charges remaining.`)
-          newTurn = 'player'
-        } else {
-          // No protection - turn ends
-          newTurn = 'opponent'
-        }
+        // Player revealed opponent/neutral tile - turn ends
+        newTurn = 'opponent'
       }
       
       this.setState({
@@ -242,14 +240,26 @@ class GameStore {
     this.setState(newState)
   }
 
-  // Toggle tile annotation
+  // Toggle tile annotation (3-state cycle: none -> slash -> dog-ear -> none)
   toggleAnnotation(x: number, y: number): boolean {
     const tile = getTileAt(this.state.board, x, y)
     if (!tile || tile.revealed) {
       return false
     }
     
-    tile.annotated = !tile.annotated
+    // Cycle through annotation states
+    switch (tile.annotated) {
+      case 'none':
+        tile.annotated = 'slash'
+        break
+      case 'slash':
+        tile.annotated = 'dog-ear'
+        break
+      case 'dog-ear':
+        tile.annotated = 'none'
+        break
+    }
+    
     this.setState({
       board: { ...this.state.board }
     })
@@ -289,7 +299,24 @@ class GameStore {
         // Try to add to inventory
         const success = addItemToInventory(run, item)
         if (!success) {
-          console.log(`Inventory full! ${item.name} was lost.`)
+          // Inventory full - check if this is an item that can be auto-applied
+          if (item.id === 'ward') {
+            // Apply ward effect immediately
+            run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 4
+            if (!run.upgrades.includes('ward-temp')) {
+              run.upgrades.push('ward-temp') // Add to upgrades list for display
+            }
+            console.log(`Inventory full! Ward auto-applied: +4 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
+          } else if (item.id === 'blaze') {
+            // Apply blaze effect immediately
+            run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
+            if (!run.upgrades.includes('blaze-temp')) {
+              run.upgrades.push('blaze-temp') // Add to upgrades list for display
+            }
+            console.log(`Inventory full! Blaze auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`)
+          } else {
+            console.log(`Inventory full! ${item.name} was lost.`)
+          }
         }
       }
     } else if (tile.content === TileContent.Monster && tile.monsterData) {
@@ -369,6 +396,12 @@ class GameStore {
       this.useWhistle()
     } else if (item.id === 'key') {
       this.startKeyMode(index)
+      return // Don't consume the item yet
+    } else if (item.id === 'staff-of-fireballs') {
+      this.startStaffMode(index)
+      return // Don't consume the item yet
+    } else if (item.id === 'ring-of-true-seeing') {
+      this.useRing(index)
       return // Don't consume the item yet
     } else {
       const message = applyItemEffect(this.state.run, item)
@@ -481,6 +514,7 @@ class GameStore {
         
         // Handle board completion if needed
         if (newBoardStatus === 'won') {
+          this.awardTrophies()
           this.handleBoardWon()
         } else if (newBoardStatus === 'lost') {
           this.handleBoardLost()
@@ -702,6 +736,142 @@ class GameStore {
     this.setState({
       keyMode: false,
       keyItemIndex: undefined
+    })
+  }
+
+  // Start staff targeting mode
+  private startStaffMode(itemIndex: number): void {
+    console.log('Staff of Fireballs activated! Click any monster to attack it.')
+    this.setState({ 
+      staffMode: true,
+      staffItemIndex: itemIndex // Store which inventory slot to consume
+    })
+  }
+
+  // Handle staff monster targeting
+  useStaffAt(x: number, y: number): boolean {
+    if (!this.state.staffMode) return false
+    
+    const tile = getTileAt(this.state.board, x, y)
+    if (!tile || !tile.monsterData) {
+      console.log('Can only target monsters with the Staff of Fireballs!')
+      return false
+    }
+    
+    // Deal 6 damage bypassing defense
+    const damage = 6
+    tile.monsterData.hp -= damage
+    console.log(`Staff of Fireballs hits ${tile.monsterData.name} for ${damage} damage! (${tile.monsterData.hp} HP remaining)`)
+    
+    // Remove monster if killed and award loot/Rich effects
+    if (tile.monsterData.hp <= 0) {
+      const monsterName = tile.monsterData.name
+      console.log(`${monsterName} is defeated!`)
+      
+      // Award loot bonus for defeating the monster
+      this.state.run.gold += this.state.run.loot
+      
+      // RICH upgrade: add gold items to adjacent tiles when defeating monsters
+      if (this.state.run.upgrades.includes('rich')) {
+        this.applyRichUpgrade(x, y).catch(console.error)
+      }
+      
+      console.log(`Staff defeated ${monsterName}! Gained ${this.state.run.loot} gold.`)
+      
+      tile.content = TileContent.Empty
+      tile.monsterData = undefined
+    }
+    
+    // Consume staff charge or remove if no charges left
+    const itemIndex = (this.state as any).staffItemIndex
+    const staff = this.state.run.inventory[itemIndex]
+    
+    if (staff && staff.multiUse) {
+      staff.multiUse.currentUses -= 1
+      console.log(`Staff of Fireballs: ${staff.multiUse.currentUses}/${staff.multiUse.maxUses} uses remaining`)
+      
+      // Remove staff if no charges left
+      if (staff.multiUse.currentUses <= 0) {
+        removeItemFromInventory(this.state.run, itemIndex)
+        console.log('Staff of Fireballs is depleted and removed from inventory')
+      }
+    }
+    
+    // Exit staff mode
+    this.setState({
+      board: { ...this.state.board },
+      run: { ...this.state.run },
+      staffMode: false,
+      staffItemIndex: undefined
+    })
+    
+    return true
+  }
+
+  // Cancel staff mode
+  cancelStaff(): void {
+    console.log('Staff targeting cancelled.')
+    this.setState({
+      staffMode: false,
+      staffItemIndex: undefined
+    })
+  }
+
+  // Start ring targeting mode
+  useRing(itemIndex: number): void {
+    console.log('Ring targeting mode activated.')
+    this.setState({ 
+      ringMode: true,
+      ringItemIndex: itemIndex // Store which inventory slot to consume
+    })
+  }
+
+  // Handle ring fog removal targeting
+  useRingAt(x: number, y: number): boolean {
+    if (!this.state.ringMode) return false
+    
+    const tile = getTileAt(this.state.board, x, y)
+    if (!tile || !tile.fogged) {
+      console.log('Can only target fogged tiles with the Ring of True Seeing!')
+      return false
+    }
+    
+    // Remove fog from the tile
+    tile.fogged = false
+    console.log(`Ring of True Seeing removes fog from tile at (${x}, ${y})`)
+    
+    // Consume ring charge or remove if no charges left
+    const itemIndex = (this.state as any).ringItemIndex
+    const ring = this.state.run.inventory[itemIndex]
+    
+    if (ring && ring.multiUse) {
+      ring.multiUse.currentUses--
+      console.log(`Ring of True Seeing has ${ring.multiUse.currentUses} charges remaining`)
+      
+      if (ring.multiUse.currentUses <= 0) {
+        // Remove the ring from inventory when no charges left
+        this.state.run.inventory[itemIndex] = null
+        console.log('Ring of True Seeing is depleted and removed from inventory')
+      }
+    }
+    
+    // Exit ring mode
+    this.setState({
+      board: { ...this.state.board },
+      run: { ...this.state.run },
+      ringMode: false,
+      ringItemIndex: undefined
+    })
+    
+    return true
+  }
+
+  // Cancel ring mode
+  cancelRing(): void {
+    console.log('Ring targeting cancelled.')
+    this.setState({
+      ringMode: false,
+      ringItemIndex: undefined
     })
   }
 
@@ -1064,6 +1234,95 @@ class GameStore {
   }
 
 
+  // Select character and start game
+  selectCharacter(characterId: string): void {
+    if (this.state.gameStatus !== 'character-select') {
+      return
+    }
+    
+    // Create character-specific run state
+    const characterRun = createCharacterRunState(characterId)
+    
+    // Import board generation functions to create proper level 1 board with character upgrades
+    import('./gameLogic').then(({ createBoardForLevel }) => {
+      import('./clues').then(({ generateClue }) => {
+        // Create board for level 1 with character upgrades applied
+        const board = createBoardForLevel(1, characterRun.gold, characterRun.upgrades)
+        
+        // Apply WISDOM upgrade: add detector scan to random tile (for level 1)
+        if (characterRun.upgrades.includes('wisdom')) {
+          const allTiles = []
+          for (let y = 0; y < board.height; y++) {
+            for (let x = 0; x < board.width; x++) {
+              allTiles.push({x, y})
+            }
+          }
+          
+          if (allTiles.length > 0) {
+            const randomTile = allTiles[Math.floor(Math.random() * allTiles.length)]
+            const tile = board.tiles[randomTile.y][randomTile.x]
+            
+            // Apply detector scan (same logic as detector item)
+            let playerAdjacent = 0
+            let opponentAdjacent = 0
+            let neutralAdjacent = 0
+            
+            // Check all 9 positions in 3x3 area (including center)
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const adjX = randomTile.x + dx
+                const adjY = randomTile.y + dy
+                if (adjX >= 0 && adjX < board.width && adjY >= 0 && adjY < board.height) {
+                  const adjTile = board.tiles[adjY][adjX]
+                  if (adjTile.owner === 'player') playerAdjacent++
+                  else if (adjTile.owner === 'opponent') opponentAdjacent++
+                  else if (adjTile.owner === 'neutral') neutralAdjacent++
+                }
+              }
+            }
+            
+            tile.detectorScan = {
+              playerAdjacent,
+              opponentAdjacent,
+              neutralAdjacent
+            }
+            console.log(`WIZARD: Applied detector scan to tile (${randomTile.x}, ${randomTile.y})`)
+          }
+        }
+        
+        // Generate initial clue with character upgrades
+        const initialClue = generateClue(board, characterRun.upgrades)
+        
+        // Create complete game state
+        const gameState = {
+          board,
+          currentTurn: 'player' as const,
+          gameStatus: 'playing' as const,
+          boardStatus: 'in-progress' as const,
+          clues: [initialClue],
+          run: characterRun,
+          transmuteMode: false,
+          detectorMode: false,
+          keyMode: false,
+          staffMode: false,
+          ringMode: false,
+          shopOpen: false,
+          shopItems: []
+        }
+        
+        console.log(`Selected character: ${characterId}`)
+        console.log(`Starting upgrades:`, characterRun.upgrades)
+        console.log(`Starting items:`, characterRun.inventory.filter(item => item !== null))
+        console.log(`Board generated with character upgrades applied`)
+        
+        this.setState(gameState)
+        
+        // Force immediate UI update to show clues with character bonuses
+        this.notify()
+      })
+    })
+  }
+
   resetGame(): void {
     // Clear any pending AI turn
     if (this.aiTurnTimeout) {
@@ -1074,7 +1333,9 @@ class GameStore {
     // Reset AI for new game
     this.ai.resetForNewBoard()
     
-    this.setState(createInitialGameState())
+    const initialState = createInitialGameState()
+    initialState.gameStatus = 'character-select' // Start in character selection
+    this.setState(initialState)
   }
 
   // Debug helpers for testing win/loss conditions
@@ -1132,9 +1393,17 @@ class GameStore {
   // Award trophies for winning a board
   awardTrophies(): void {
     const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
-    const trophiesEarned = Math.max(0, opponentTilesLeft - 1) // N-1 trophies
+    const opponentTilesRevealed = this.state.board.opponentTilesRevealed
+    let trophiesEarned = Math.max(0, opponentTilesLeft - 1) // N-1 trophies
+    
+    // Perfect board bonus: +10 trophies if opponent revealed 0 tiles
+    const perfectBoardBonus = opponentTilesRevealed === 0 ? 10 : 0
+    trophiesEarned += perfectBoardBonus
     
     console.log(`Awarding ${trophiesEarned} trophies (${opponentTilesLeft} opponent tiles left)`)
+    if (perfectBoardBonus > 0) {
+      console.log(`Perfect board bonus: +${perfectBoardBonus} trophies!`)
+    }
     console.log(`Current trophies before awarding:`, this.state.run.trophies.length)
     
     // Create new trophies array with existing trophies plus new ones

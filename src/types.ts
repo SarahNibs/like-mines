@@ -36,6 +36,10 @@ export interface ItemData {
   description: string
   icon: string
   immediate?: boolean // True if item has immediate effect on pickup
+  multiUse?: {
+    maxUses: number
+    currentUses: number
+  } // Multi-use item data
 }
 
 export interface MonsterData {
@@ -71,7 +75,8 @@ export interface Tile {
   content: TileContent
   revealed: boolean
   contentVisible: boolean // Whether content is known before reveal
-  annotated: boolean // Player annotation (gray slash)
+  annotated: 'none' | 'slash' | 'dog-ear' // Player annotation: none -> gray slash -> light green dog-ear -> none
+  fogged: boolean // Whether this tile is covered by fog (hides UI until revealed)
   revealedBy?: TileOwner // Who revealed this tile (determines adjacency display)
   itemData?: ItemData // Present if content is Item
   monsterData?: MonsterData // Present if content is Monster
@@ -118,6 +123,7 @@ export interface RunState {
   maxInventory: number // Maximum inventory slots (increased by Bag upgrades)
   upgrades: string[] // Array of upgrade IDs that have been acquired
   trophies: Trophy[] // Player's trophy collection
+  characterId?: string // Selected character ID for display
   temporaryBuffs: {
     ward?: number // Defense boost for next fight
     blaze?: number // Attack boost for next fight
@@ -128,13 +134,15 @@ export interface RunState {
 export interface GameState {
   board: Board
   currentTurn: 'player' | 'opponent'
-  gameStatus: 'playing' | 'player-won' | 'opponent-won' | 'run-complete' | 'player-died'
+  gameStatus: 'character-select' | 'playing' | 'player-won' | 'opponent-won' | 'run-complete' | 'player-died'
   boardStatus: 'in-progress' | 'won' | 'lost'
   clues: import('./clues').ProbabilisticClue[] // Array of accumulated clues
   run: RunState
   transmuteMode: boolean // Whether player is in transmute tile selection mode
   detectorMode: boolean // Whether player is in detector tile selection mode
   keyMode: boolean // Whether player is in key tile selection mode
+  staffMode: boolean // Whether player is in staff targeting mode
+  ringMode: boolean // Whether player is in ring targeting mode
   shopOpen: boolean // Whether the shop widget is currently open
   shopItems: Array<{item: ItemData | UpgradeData, cost: number, isUpgrade?: boolean}> // Current shop inventory
   // pendingRewind removed

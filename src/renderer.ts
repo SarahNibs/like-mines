@@ -249,6 +249,77 @@ export class GameRenderer {
     const isHighlighted = this.highlightedTiles.has(`${tile.x},${tile.y}`) || this.persistentHighlightedTiles.has(`${tile.x},${tile.y}`)
     const isExtraHighlighted = this.extraHighlightedTiles.has(`${tile.x},${tile.y}`) || this.persistentExtraHighlightedTiles.has(`${tile.x},${tile.y}`)
     
+    // Check for fog early - if fogged and unrevealed, render minimal fog tile
+    if (tile.fogged && !tile.revealed) {
+      // Draw basic tile background
+      this.ctx.fillStyle = colors.bg
+      this.ctx.fillRect(x, y, this.tileSize, this.tileSize)
+      
+      // Draw tile border
+      this.ctx.strokeStyle = colors.border
+      this.ctx.lineWidth = 2
+      this.ctx.strokeRect(x, y, this.tileSize, this.tileSize)
+      
+      // Draw fog effect that covers everything
+      this.ctx.fillStyle = 'rgba(200, 200, 200, 0.9)'
+      this.ctx.fillRect(x, y, this.tileSize, this.tileSize)
+      
+      // Add cloud texture with semi-transparent white spots
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+      const cloudSpots = [
+        { x: x + this.tileSize * 0.2, y: y + this.tileSize * 0.3, r: this.tileSize * 0.08 },
+        { x: x + this.tileSize * 0.7, y: y + this.tileSize * 0.4, r: this.tileSize * 0.06 },
+        { x: x + this.tileSize * 0.4, y: y + this.tileSize * 0.6, r: this.tileSize * 0.07 },
+        { x: x + this.tileSize * 0.6, y: y + this.tileSize * 0.7, r: this.tileSize * 0.05 }
+      ]
+      
+      cloudSpots.forEach(spot => {
+        this.ctx.beginPath()
+        this.ctx.arc(spot.x, spot.y, spot.r, 0, Math.PI * 2)
+        this.ctx.fill()
+      })
+      
+      // Only show detector scan results over fog (if present)
+      if (tile.detectorScan) {
+        const scan = tile.detectorScan
+        const scanText = `${scan.playerAdjacent}/${scan.opponentAdjacent}/${scan.neutralAdjacent}`
+        
+        this.ctx.font = `bold ${Math.floor(this.tileSize * 0.12)}px Courier New`
+        this.ctx.textAlign = 'center'
+        this.ctx.textBaseline = 'middle'
+        
+        const textMetrics = this.ctx.measureText(scanText)
+        const textWidth = textMetrics.width
+        const textHeight = Math.floor(this.tileSize * 0.12)
+        
+        const boxPadding = 1
+        const boxWidth = textWidth + boxPadding * 2
+        const boxHeight = textHeight + boxPadding * 2
+        const boxX = x + this.tileSize - boxWidth - 2
+        const boxY = y + this.tileSize - boxHeight - 2
+        
+        // Draw background box
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
+        this.ctx.fillRect(boxX, boxY, boxWidth, boxHeight)
+        
+        // Draw border around the box
+        this.ctx.strokeStyle = '#ffffff'
+        this.ctx.lineWidth = 1
+        this.ctx.strokeRect(boxX, boxY, boxWidth, boxHeight)
+        
+        // Draw the text
+        this.ctx.fillStyle = '#ffffff'
+        this.ctx.fillText(scanText, boxX + boxWidth / 2, boxY + boxHeight / 2)
+        
+        // Reset text alignment
+        this.ctx.textAlign = 'center'
+        this.ctx.textBaseline = 'middle'
+      }
+      
+      return // Skip all other rendering for fogged tiles
+    }
+
+    // Normal tile rendering (not fogged or revealed)
     // Draw tile background
     this.ctx.fillStyle = colors.bg
     this.ctx.fillRect(x, y, this.tileSize, this.tileSize)
@@ -384,14 +455,25 @@ export class GameRenderer {
         }
       }
       
-      // Draw annotation slash if annotated (bottom-left to top-right)
-      if (tile.annotated) {
+      // Draw annotation based on state
+      if (tile.annotated === 'slash') {
+        // Gray slash (bottom-left to top-right)
         this.ctx.strokeStyle = '#999'
         this.ctx.lineWidth = 2
         this.ctx.beginPath()
         this.ctx.moveTo(x + 5, y + this.tileSize - 5)
         this.ctx.lineTo(x + this.tileSize - 5, y + 5)
         this.ctx.stroke()
+      } else if (tile.annotated === 'dog-ear') {
+        // Light green dog-ear (rounded upper right corner)
+        this.ctx.fillStyle = '#90ee90'
+        this.ctx.beginPath()
+        const cornerSize = 20
+        this.ctx.moveTo(x + this.tileSize - cornerSize, y)
+        this.ctx.lineTo(x + this.tileSize, y)
+        this.ctx.lineTo(x + this.tileSize, y + cornerSize)
+        this.ctx.quadraticCurveTo(x + this.tileSize - 2, y + 2, x + this.tileSize - cornerSize, y)
+        this.ctx.fill()
       }
       
       // Draw chain indicators if tile has chain data
@@ -440,6 +522,7 @@ export class GameRenderer {
       this.ctx.textAlign = 'center'
       this.ctx.textBaseline = 'middle'
     }
+    
   }
 
   // Draw chain indicator for chained tiles

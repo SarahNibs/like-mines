@@ -2,6 +2,7 @@ import * as ROT from 'rot-js'
 import { Board, Tile, TileOwner, TileContent } from './types'
 import { ALL_ITEMS, SHOP, PROTECTION, createMonster, createGuaranteedNewMonster } from './items'
 import { getAvailableUpgrades } from './upgrades'
+import { getLevelSpec, LevelSpec } from './levelSpecs'
 
 export interface BoardConfig {
   width: number
@@ -27,65 +28,30 @@ export interface SpawnConfig {
   shops: { min: number; max: number }
   protections: { min: number; max: number }
   clues: { min: number; max: number }
+  staffOfFireballs: { min: number; max: number }
+  ringOfTrueSeeing: { min: number; max: number }
 }
 
-// Spawn configuration per level
+// Convert level spec to spawn config format
 function getSpawnConfigForLevel(level: number): SpawnConfig {
+  const spec = getLevelSpec(level)
   return {
-    chains: { 
-      min: Math.min(Math.floor(level * level * 0.07), level - 1), 
-      max: Math.min(Math.floor(level * level * 0.09), level) 
-    },
-    upgrades: { min: 1, max: 1 }, // Always exactly 1
-    monsters: { 
-      min: Math.max(2, Math.floor(Math.sqrt(level) * 1.8)), 
-      max: Math.max(3, Math.floor(Math.sqrt(level) * 2.5)) 
-    },
-    goldCoins: { 
-      min: Math.max(1, Math.floor(level * 0.6)), 
-      max: Math.max(2, Math.floor(level * 1.0)) 
-    },
-    firstAid: { 
-      min: level >= 1 ? 1 : 0, 
-      max: level >= 3 ? 3 : (level >= 1 ? 2 : 0) 
-    },
-    crystalBalls: { 
-      min: level >= 2 ? 1 : 0, 
-      max: level >= 4 ? 2 : (level >= 2 ? 1 : 0) 
-    },
-    detectors: { 
-      min: level >= 3 ? 1 : 0, 
-      max: level >= 6 ? 2 : (level >= 3 ? 1 : 0) 
-    },
-    transmutes: { 
-      min: level >= 6 ? 1 : 0, 
-      max: level >= 12 ? 2 : (level >= 6 ? 1 : 0) 
-    },
-    // rewinds removed
-    wards: { 
-      min: level >= 4 ? 1 : 0, 
-      max: level >= 8 ? 2 : (level >= 4 ? 1 : 0) 
-    },
-    blazes: { 
-      min: level >= 4 ? 1 : 0, 
-      max: level >= 8 ? 2 : (level >= 4 ? 1 : 0) 
-    },
-    keys: { 
-      min: level >= 6 ? 1 : 0, 
-      max: level >= 10 ? 2 : (level >= 6 ? 1 : 0) 
-    },
-    shops: { 
-      min: (level >= 3 && level % 3 === 0) ? 1 : 0, 
-      max: (level >= 3 && level % 3 === 0) ? 1 : 0 
-    },
-    protections: { 
-      min: 1, 
-      max: 1 
-    },
-    clues: {
-      min: level >= 4 ? 1 : 0,
-      max: level >= 8 ? 2 : (level >= 4 ? 1 : 0)
-    }
+    chains: spec.chains,
+    upgrades: spec.upgrades,
+    monsters: spec.monsters,
+    goldCoins: spec.goldCoins,
+    firstAid: spec.firstAid,
+    crystalBalls: spec.crystalBalls,
+    detectors: spec.detectors,
+    transmutes: spec.transmutes,
+    wards: spec.wards,
+    blazes: spec.blazes,
+    keys: spec.keys,
+    shops: { min: spec.hasShop ? 1 : 0, max: spec.hasShop ? 1 : 0 },
+    protections: spec.protections,
+    clues: spec.clues,
+    staffOfFireballs: spec.staffOfFireballs,
+    ringOfTrueSeeing: spec.ringOfTrueSeeing
   }
 }
 
@@ -376,8 +342,9 @@ function spawnMonsters(tiles: Tile[][], width: number, height: number, range: {m
     ...emptyNonPlayerTiles
   ]
   
-  // First, place the guaranteed new monster if this level introduces one
-  const guaranteedMonster = createGuaranteedNewMonster(level)
+  // First, place the guaranteed new monster if this level spec indicates it
+  const levelSpec = getLevelSpec(level)
+  const guaranteedMonster = levelSpec.guaranteedNewMonster ? createGuaranteedNewMonster(level) : null
   let monstersPlaced = 0
   
   if (guaranteedMonster && weightedTiles.length > 0) {
@@ -535,6 +502,75 @@ function spawnClues(tiles: Tile[][], width: number, height: number, range: {min:
   }
 }
 
+// Spawn staff of fireballs  
+function spawnStaffOfFireballs(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG): void {
+  
+  const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
+  const emptyTiles = getEmptyTiles(tiles, width, height)
+  const staff = ALL_ITEMS.find(i => i.id === 'staff-of-fireballs')!
+  
+  for (let i = 0; i < count && emptyTiles.length > 0; i++) {
+    // Create a fresh copy of the staff with full charges
+    const freshStaff = {
+      ...staff,
+      multiUse: {
+        maxUses: 3,
+        currentUses: 3
+      }
+    }
+    placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Item, freshStaff)
+  }
+}
+
+// Spawn Ring of True Seeing items
+function spawnRingOfTrueSeeing(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG): void {
+  
+  const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
+  const emptyTiles = getEmptyTiles(tiles, width, height)
+  const ring = ALL_ITEMS.find(i => i.id === 'ring-of-true-seeing')!
+  
+  for (let i = 0; i < count && emptyTiles.length > 0; i++) {
+    // Create a fresh copy of the ring with full charges
+    const freshRing = {
+      ...ring,
+      multiUse: {
+        maxUses: 6,
+        currentUses: 6
+      }
+    }
+    placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Item, freshRing)
+  }
+}
+
+// Apply fog effect to random tiles (4-8% coverage starting level 8)
+function applyFogEffect(tiles: Tile[][], width: number, height: number, rng: ROT.RNG): void {
+  const totalTiles = width * height
+  const minFogPercent = 0.04 // 4%
+  const maxFogPercent = 0.08 // 8%
+  
+  // Random percentage between 4% and 8%
+  const fogPercent = minFogPercent + rng.getUniform() * (maxFogPercent - minFogPercent)
+  const fogCount = Math.floor(totalTiles * fogPercent)
+  
+  console.log(`Applying fog to ${fogCount} tiles (${(fogPercent * 100).toFixed(1)}% of ${totalTiles} tiles)`)
+  
+  // Get all tiles that can be fogged (any tile)
+  const availableTiles = []
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      availableTiles.push({ x, y })
+    }
+  }
+  
+  // Apply fog to random tiles
+  for (let i = 0; i < fogCount && availableTiles.length > 0; i++) {
+    const randomIndex = Math.floor(rng.getUniform() * availableTiles.length)
+    const tilePos = availableTiles.splice(randomIndex, 1)[0]
+    const tile = tiles[tilePos.y][tilePos.x]
+    tile.fogged = true
+  }
+}
+
 export function generateBoard(config: BoardConfig, playerGold: number = 0, ownedUpgrades: string[] = []): Board {
   const { width, height, playerTileRatio, opponentTileRatio, seed } = config
   
@@ -563,7 +599,8 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
         content: TileContent.Empty,
         revealed: false,
         contentVisible: false,
-        annotated: false
+        annotated: 'none',
+        fogged: false
       }
     }
   }
@@ -656,6 +693,13 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
   spawnShops(tiles, width, height, spawnConfig.shops, rng)
   spawnProtections(tiles, width, height, spawnConfig.protections, rng)
   spawnClues(tiles, width, height, spawnConfig.clues, rng)
+  spawnStaffOfFireballs(tiles, width, height, spawnConfig.staffOfFireballs, rng)
+  spawnRingOfTrueSeeing(tiles, width, height, spawnConfig.ringOfTrueSeeing, rng)
+  
+  // Apply fog effect starting from level 8
+  if (actualLevel >= 8) {
+    applyFogEffect(tiles, width, height, rng)
+  }
   
   return {
     width,
@@ -668,24 +712,15 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
   }
 }
 
-// Predefined board configurations for different difficulties
+// Get board configuration from level specifications
 export function getBoardConfigForLevel(level: number): BoardConfig {
-  // Start small and grow progressively
-  const baseWidth = 4
-  const baseHeight = 3
-  
-  const width = Math.min(baseWidth + Math.floor(level / 3), 8) // Max 8 wide
-  const height = Math.min(baseHeight + Math.floor(level / 4), 6) // Max 6 high
-  
-  // Player gets slightly more tiles early on, evens out later
-  const playerTileRatio = Math.max(0.25, 0.45 - level * 0.02) // 45% -> 25%
-  const opponentTileRatio = Math.min(0.35, 0.25 + level * 0.01) // 25% -> 35%
+  const spec = getLevelSpec(level)
   
   return {
-    width,
-    height,
-    playerTileRatio,
-    opponentTileRatio,
+    width: spec.width,
+    height: spec.height,
+    playerTileRatio: spec.playerTileRatio,
+    opponentTileRatio: spec.opponentTileRatio,
     seed: level * 1000 + Math.floor(Math.random() * 1000) // Semi-random seed
   }
 }
