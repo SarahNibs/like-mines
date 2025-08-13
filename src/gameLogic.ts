@@ -278,9 +278,7 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       // This shouldn't be called since transmute is not immediate anymore
       return 'Transmute effect should be handled in store!'
       
-    case 'rewind':
-      // This shouldn't be called since rewind is not immediate anymore
-      return 'Rewind effect should be handled in store!'
+    // rewind case removed
       
     case 'detector':
       // This shouldn't be called since detector is not immediate anymore

@@ -137,11 +137,7 @@ export interface GameState {
   keyMode: boolean // Whether player is in key tile selection mode
   shopOpen: boolean // Whether the shop widget is currently open
   shopItems: Array<{item: ItemData | UpgradeData, cost: number, isUpgrade?: boolean}> // Current shop inventory
-  pendingRewind?: {
-    tile: Tile
-    rewindIndex: number
-    description: string
-  } | null // Pending rewind decision data
+  // pendingRewind removed
   pendingDiscard?: {
     itemIndex: number
     itemName: string

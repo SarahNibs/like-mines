@@ -28,10 +28,7 @@ const inventoryEl = document.getElementById('inventory')!
 const upgradesEl = document.getElementById('upgrades')!
 const boardOverlay = document.getElementById('board-overlay')!
 const overlayMessage = document.getElementById('overlay-message')!
-const rewindWidget = document.getElementById('rewind-widget')!
-const rewindMessage = document.getElementById('rewind-message')!
-const rewindProceedBtn = document.getElementById('rewind-proceed')!
-const rewindCancelBtn = document.getElementById('rewind-cancel')!
+// Rewind elements removed
 const shopWidget = document.getElementById('shop-widget')!
 const shopItemsEl = document.getElementById('shop-items')!
 const shopCloseBtn = document.getElementById('shop-close')!
@@ -262,8 +259,7 @@ function updateUI() {
   // Update upgrades
   updateUpgrades(state)
   
-  // Update rewind widget
-  updateRewindWidget(state)
+  // Rewind widget removed
   
   // Update shop widget
   updateShopWidget(state)
@@ -304,6 +300,9 @@ function updateUI() {
 // Hover state management
 let currentHoverTiles = null // {tiles: Tile[], extraTiles: Tile[]}
 let persistentHoverTiles = null // Same structure but dimmer
+
+// Clue scroll position preservation
+let savedClueScrollTop = 0
 
 // Update hover highlights on board
 function updateHoverHighlights() {
@@ -408,15 +407,7 @@ function updateUpgrades(state: any) {
   }
 }
 
-// Update rewind widget display
-function updateRewindWidget(state: any) {
-  if (state.pendingRewind) {
-    rewindWidget.style.display = 'block'
-    rewindMessage.textContent = `This is a ${state.pendingRewind.description}! Use Rewind to prevent revealing it, or proceed anyway.`
-  } else {
-    rewindWidget.style.display = 'none'
-  }
-}
+// Rewind widget function removed
 
 // Update shop widget display
 function updateShopWidget(state: any) {
@@ -558,9 +549,9 @@ function updateClues(state: any) {
   
   state.clues.forEach((clue: any, clueIndex: number) => {
     const clueSection = document.createElement('div')
-    clueSection.style.marginBottom = '10px'
-    clueSection.style.borderBottom = clueIndex < state.clues.length - 1 ? '1px solid #555' : 'none'
-    clueSection.style.paddingBottom = '8px'
+    clueSection.style.marginBottom = '4px' // Reduced from 10px
+    // Removed separator line as requested
+    clueSection.style.paddingBottom = '2px' // Reduced from 8px
     
     // Two hands side by side, no labels, just bordered containers
     const handsContainer = document.createElement('div')
@@ -623,6 +614,7 @@ function updateClues(state: any) {
         console.log('Mouse enter Hand A tile', tile.x, tile.y)
         currentHoverTiles = { tiles: clue.handA.tiles, extraTiles: [tile] }
         persistentHoverTiles = null // Clear any existing persistent highlights
+        renderer.clearAllHighlights() // Clear any renderer persistent highlights 
         updateHoverHighlights() // Update highlights immediately
         render()
       })
@@ -738,6 +730,7 @@ function updateClues(state: any) {
         console.log('Mouse enter Hand B tile', tile.x, tile.y)
         currentHoverTiles = { tiles: clue.handB.tiles, extraTiles: [tile] }
         persistentHoverTiles = null // Clear any existing persistent highlights
+        renderer.clearAllHighlights() // Clear any renderer persistent highlights
         updateHoverHighlights() // Update highlights immediately
         render()
       })
@@ -807,16 +800,24 @@ function updateClues(state: any) {
   // Replace the hands display with our new all-clues container
   const cluesStatusContent = document.querySelector('#right-panel .status:last-child .status-content')
   if (cluesStatusContent) {
+    // Preserve scroll position before rebuilding
+    const existingScrollContainer = cluesStatusContent.querySelector('div[style*="overflowY"]')
+    if (existingScrollContainer) {
+      savedClueScrollTop = existingScrollContainer.scrollTop
+    }
+    
     cluesStatusContent.innerHTML = ''
     cluesStatusContent.appendChild(allCluesContainer)
     
-    // Add the help text
-    const helpText = document.createElement('div')
-    helpText.textContent = 'Hover: highlight, Click: persist, Right-click board: annotate'
-    helpText.style.marginTop = '8px'
-    helpText.style.fontSize = '11px'
-    helpText.style.color = '#aaa'
-    cluesStatusContent.appendChild(helpText)
+    // Restore scroll position after rebuilding
+    allCluesContainer.scrollTop = savedClueScrollTop
+    
+    // Add scroll event listener to track future scroll changes
+    allCluesContainer.addEventListener('scroll', () => {
+      savedClueScrollTop = allCluesContainer.scrollTop
+    })
+    
+    // Help text removed as requested
   }
 }
 
@@ -1182,16 +1183,7 @@ document.getElementById('start-new-run')!.addEventListener('click', () => {
   gameStore.resetGame()
 })
 
-// Rewind widget button handlers
-rewindProceedBtn.addEventListener('click', () => {
-  console.log('Player chose to proceed with dangerous reveal')
-  gameStore.proceedWithReveal()
-})
-
-rewindCancelBtn.addEventListener('click', () => {
-  console.log('Player chose to use Rewind item')
-  gameStore.proceedWithRewind()
-})
+// Rewind widget handlers removed
 
 // Shop widget button handlers
 shopCloseBtn.addEventListener('click', () => {
@@ -1248,6 +1240,13 @@ gameStore.subscribe(() => {
     renderer.clearAllHighlights()
     ;(window as any).lastLevel = state.run.currentLevel
   }
+  
+  // Force upgrade refresh on game status changes (like run reset)
+  if (state.gameStatus !== (window as any).lastGameStatus) {
+    lastUpgradeState = [] // Clear upgrade cache to force refresh
+    ;(window as any).lastGameStatus = state.gameStatus
+  }
+  
   render()
 })
 
@@ -1267,7 +1266,19 @@ function updateTrophies(state: any) {
   console.log('Updating trophies display. Trophy count:', state.run.trophies.length)
   trophiesContainer.innerHTML = ''
   
-  state.run.trophies.forEach((trophy: any, index: number) => {
+  // Sort trophies: gold first, then stolen gold, then silver
+  const sortedTrophies = [...state.run.trophies].sort((a: any, b: any) => {
+    // Priority order: 1=gold, 2=stolen gold, 3=silver
+    const getPriority = (trophy: any) => {
+      if (trophy.type === 'gold' && !trophy.stolen) return 1
+      if (trophy.type === 'gold' && trophy.stolen) return 2
+      return 3 // silver
+    }
+    
+    return getPriority(a) - getPriority(b)
+  })
+  
+  sortedTrophies.forEach((trophy: any, index: number) => {
     const trophyEl = document.createElement('div')
     trophyEl.className = `trophy ${trophy.type}`
     if (trophy.stolen) {

@@ -452,10 +452,10 @@ export class GameRenderer {
     
     // If the required tile is revealed, check if we should still draw indicators
     if (requiredTile.revealed) {
-      // For middle tiles with secondary keys, keep drawing the key but not the lock
+      // For middle tiles with secondary keys, keep drawing the key but not the door/lock
       if (chainData.hasSecondaryKey) {
-        // Only draw the secondary key, not the lock
-        // Continue to the key drawing logic below, but skip the lock logic
+        // Only draw the secondary key, not the door
+        // Continue to the key drawing logic below, but skip the door logic
       } else {
         // For regular chains, stop drawing indicators entirely
         return
@@ -468,45 +468,28 @@ export class GameRenderer {
     
     ctx.save()
     
-    // Check if we should draw the lock (only if required tile is not revealed)
-    const shouldDrawLock = !requiredTile.revealed
+    // Check if we should draw the door (only if required tile is not revealed)
+    const shouldDrawDoor = !requiredTile.revealed
     
-    // Handle tiles that have both a lock and a key (middle tiles in 3-tile chains)
+    // Handle tiles that have both a door and a key (middle tiles in 3-tile chains)
     if (chainData.isBlocked && chainData.hasSecondaryKey) {
-      // Position lock icon for the primary block
-      let lockX: number, lockY: number
-      
-      if (Math.abs(dx) > Math.abs(dy)) {
-        // Horizontal positioning (left or right edge)
-        if (dx > 0) {
-          // Required tile is to the right, put lock on right edge
-          lockX = x + this.tileSize * 0.85
-          lockY = y + this.tileSize / 2
-        } else {
-          // Required tile is to the left, put lock on left edge
-          lockX = x + this.tileSize * 0.15
-          lockY = y + this.tileSize / 2
-        }
-      } else {
-        // Vertical positioning (top or bottom edge)
-        if (dy > 0) {
-          // Required tile is below, put lock on bottom edge
-          lockX = x + this.tileSize / 2
-          lockY = y + this.tileSize * 0.85
-        } else {
-          // Required tile is above, put lock on top edge
-          lockX = x + this.tileSize / 2
-          lockY = y + this.tileSize * 0.15
-        }
-      }
-      
-      // Draw lock icon only if required tile is not revealed
-      if (shouldDrawLock) {
-        ctx.fillStyle = '#ff6666'
-        ctx.font = `${Math.floor(this.tileSize * 0.15)}px serif`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText('🔒', lockX, lockY)
+      // Draw large dim door background only if required tile is not revealed
+      if (shouldDrawDoor) {
+        ctx.fillStyle = 'rgba(139, 69, 19, 0.3)' // Dim brown door color
+        ctx.fillRect(x, y, this.tileSize, this.tileSize)
+        
+        // Draw door frame
+        ctx.strokeStyle = 'rgba(101, 67, 33, 0.5)' // Darker brown for frame
+        ctx.lineWidth = 2
+        ctx.strokeRect(x + 2, y + 2, this.tileSize - 4, this.tileSize - 4)
+        
+        // Draw door handle (small circle)
+        const handleX = x + this.tileSize * 0.8
+        const handleY = y + this.tileSize * 0.5
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.4)' // Dim gold handle
+        ctx.beginPath()
+        ctx.arc(handleX, handleY, 3, 0, Math.PI * 2)
+        ctx.fill()
       }
       
       // Position key icon for the secondary key (on opposite edge)
@@ -534,14 +517,7 @@ export class GameRenderer {
         }
       }
       
-      // Offset key slightly if it would overlap with lock
-      if (Math.abs(keyX - lockX) < this.tileSize * 0.1 && Math.abs(keyY - lockY) < this.tileSize * 0.1) {
-        if (Math.abs(dx) > Math.abs(dy)) {
-          keyY += this.tileSize * 0.15 // Offset vertically
-        } else {
-          keyX += this.tileSize * 0.15 // Offset horizontally
-        }
-      }
+      // Key positioning is now independent since door is a background
       
       // Draw key icon
       ctx.fillStyle = '#66ff66'
@@ -551,40 +527,23 @@ export class GameRenderer {
       ctx.fillText('🔑', keyX, keyY)
       
     } else if (chainData.isBlocked) {
-      // Regular locked tile
-      let lockX: number, lockY: number
-      
-      if (Math.abs(dx) > Math.abs(dy)) {
-        // Horizontal positioning (left or right edge)
-        if (dx > 0) {
-          // Required tile is to the right, put lock on right edge
-          lockX = x + this.tileSize * 0.85
-          lockY = y + this.tileSize / 2
-        } else {
-          // Required tile is to the left, put lock on left edge
-          lockX = x + this.tileSize * 0.15
-          lockY = y + this.tileSize / 2
-        }
-      } else {
-        // Vertical positioning (top or bottom edge)
-        if (dy > 0) {
-          // Required tile is below, put lock on bottom edge
-          lockX = x + this.tileSize / 2
-          lockY = y + this.tileSize * 0.85
-        } else {
-          // Required tile is above, put lock on top edge
-          lockX = x + this.tileSize / 2
-          lockY = y + this.tileSize * 0.15
-        }
-      }
-      
-      // Draw lock icon (🔒) without background only if required tile is not revealed
-      if (shouldDrawLock) {
-        ctx.fillStyle = '#ff6666'
-        ctx.font = `${Math.floor(this.tileSize * 0.15)}px serif`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText('🔒', lockX, lockY)
+      // Regular locked tile - draw large dim door background
+      if (shouldDrawDoor) {
+        ctx.fillStyle = 'rgba(139, 69, 19, 0.3)' // Dim brown door color
+        ctx.fillRect(x, y, this.tileSize, this.tileSize)
+        
+        // Draw door frame
+        ctx.strokeStyle = 'rgba(101, 67, 33, 0.5)' // Darker brown for frame
+        ctx.lineWidth = 2
+        ctx.strokeRect(x + 2, y + 2, this.tileSize - 4, this.tileSize - 4)
+        
+        // Draw door handle (small circle)
+        const handleX = x + this.tileSize * 0.8
+        const handleY = y + this.tileSize * 0.5
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.4)' // Dim gold handle
+        ctx.beginPath()
+        ctx.arc(handleX, handleY, 3, 0, Math.PI * 2)
+        ctx.fill()
       }
       
     } else {

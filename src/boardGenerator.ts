@@ -20,7 +20,7 @@ export interface SpawnConfig {
   crystalBalls: { min: number; max: number }
   detectors: { min: number; max: number }
   transmutes: { min: number; max: number }
-  rewinds: { min: number; max: number }
+  // rewinds removed
   wards: { min: number; max: number }
   blazes: { min: number; max: number }
   keys: { min: number; max: number }
@@ -61,10 +61,7 @@ function getSpawnConfigForLevel(level: number): SpawnConfig {
       min: level >= 6 ? 1 : 0, 
       max: level >= 12 ? 2 : (level >= 6 ? 1 : 0) 
     },
-    rewinds: { 
-      min: level >= 5 ? 1 : 0, 
-      max: level >= 8 ? 2 : (level >= 5 ? 1 : 0) 
-    },
+    // rewinds removed
     wards: { 
       min: level >= 4 ? 1 : 0, 
       max: level >= 8 ? 2 : (level >= 4 ? 1 : 0) 
@@ -312,20 +309,20 @@ function placeOnRandomEmptyTile(tiles: Tile[][], emptyTiles: Array<{x: number, y
   return true
 }
 
-// Spawn upgrades preferring locked tiles
+// Spawn upgrades preferring locked tiles but allowing any tile
 function spawnUpgrades(tiles: Tile[][], width: number, height: number, count: number, rng: ROT.RNG, ownedUpgrades: string[]): void {
   const availableUpgrades = getAvailableUpgrades(ownedUpgrades)
   if (availableUpgrades.length === 0) return
   
-  // Find locked tiles and non-player tiles
+  // Find locked tiles and all empty tiles
   const lockedTiles = []
-  const nonPlayerTiles = []
+  const allEmptyTiles = []
   
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const tile = tiles[y][x]
-      if (tile.owner !== TileOwner.Player && tile.content === TileContent.Empty) {
-        nonPlayerTiles.push({x, y})
+      if (tile.content === TileContent.Empty) {
+        allEmptyTiles.push({x, y})
         if (tile.chainData && tile.chainData.isBlocked) {
           lockedTiles.push({x, y})
         }
@@ -333,16 +330,16 @@ function spawnUpgrades(tiles: Tile[][], width: number, height: number, count: nu
     }
   }
   
-  // Always prefer locked tiles when they exist, only use non-player tiles as absolute fallback
+  // Prefer locked tiles when they exist, but use any empty tile as fallback
   for (let i = 0; i < count; i++) {
     const randomUpgrade = availableUpgrades[Math.floor(rng.getUniform() * availableUpgrades.length)]
     
     // Try locked tiles first
     if (lockedTiles.length > 0) {
       placeOnRandomEmptyTile(tiles, lockedTiles, rng, TileContent.PermanentUpgrade, randomUpgrade)
-    } else if (nonPlayerTiles.length > 0) {
-      // Only use non-player tiles if no locked tiles available
-      placeOnRandomEmptyTile(tiles, nonPlayerTiles, rng, TileContent.PermanentUpgrade, randomUpgrade)
+    } else if (allEmptyTiles.length > 0) {
+      // Use any empty tile (including player tiles) if no locked tiles available
+      placeOnRandomEmptyTile(tiles, allEmptyTiles, rng, TileContent.PermanentUpgrade, randomUpgrade)
     } else {
       // No suitable tiles available
       break
@@ -408,8 +405,7 @@ function spawnGoldCoins(tiles: Tile[][], width: number, height: number, range: {
 
 // Spawn first aid
 function spawnFirstAid(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG, playerGold: number): void {
-  if (playerGold < 5) return // Don't spawn if player can't afford
-  
+  // Remove level/gold barrier - First Aid can spawn from level 1 regardless of gold
   const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
   const emptyTiles = getEmptyTiles(tiles, width, height)
   const firstAid = ALL_ITEMS.find(i => i.id === 'first-aid')!
@@ -452,16 +448,7 @@ function spawnTransmutes(tiles: Tile[][], width: number, height: number, range: 
   }
 }
 
-// Spawn rewinds
-function spawnRewinds(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG): void {
-  const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
-  const emptyTiles = getEmptyTiles(tiles, width, height)
-  const rewind = ALL_ITEMS.find(i => i.id === 'rewind')!
-  
-  for (let i = 0; i < count && emptyTiles.length > 0; i++) {
-    placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Item, rewind)
-  }
-}
+// Rewind spawning removed
 
 
 // Spawn wards
@@ -662,7 +649,7 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
   spawnCrystalBalls(tiles, width, height, spawnConfig.crystalBalls, rng)
   spawnDetectors(tiles, width, height, spawnConfig.detectors, rng)
   spawnTransmutes(tiles, width, height, spawnConfig.transmutes, rng)
-  spawnRewinds(tiles, width, height, spawnConfig.rewinds, rng)
+  // spawnRewinds removed
   spawnWards(tiles, width, height, spawnConfig.wards, rng)
   spawnBlazes(tiles, width, height, spawnConfig.blazes, rng)
   spawnKeys(tiles, width, height, spawnConfig.keys, rng)

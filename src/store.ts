@@ -71,9 +71,7 @@ class GameStore {
                                    this.state.run.temporaryBuffs.protection && 
                                    this.state.run.temporaryBuffs.protection > 0
     
-    if (!bypassRewind && !wouldProtectionActivate && this.checkRewindProtection(tile)) {
-      return false // Player chose not to reveal
-    }
+    // Rewind logic removed
     
     const success = revealTile(this.state.board, x, y, 'player')
     if (success) {
@@ -238,6 +236,9 @@ class GameStore {
     const newState = progressToNextLevel(this.state)
     console.log(`Progressing to level ${newState.run.currentLevel}`)
     
+    // Reset AI for new board
+    this.ai.resetForNewBoard()
+    
     this.setState(newState)
   }
 
@@ -330,10 +331,7 @@ class GameStore {
     if (!item) return
     
     // Handle special items
-    if (item.id === 'rewind') {
-      console.log('Rewind is passive - only activates when revealing dangerous tiles')
-      return // Do nothing - rewinds are passive items
-    } else if (item.id === 'crystal-ball') {
+    if (item.id === 'crystal-ball') {
       // Remove the crystal ball BEFORE revealing the tile to free up inventory space
       removeItemFromInventory(this.state.run, index)
       this.setState({ run: { ...this.state.run } })
@@ -974,98 +972,7 @@ class GameStore {
     }
   }
 
-  // Check if Rewind should protect against revealing dangerous tiles
-  private checkRewindProtection(tile: any): boolean {
-    // Check if player has Rewind in inventory
-    const rewindIndex = this.state.run.inventory.findIndex(item => item?.id === 'rewind')
-    if (rewindIndex === -1) {
-      return false // No Rewind, no protection
-    }
-    
-    // Check if tile is dangerous (only for neutral/opponent tiles, not monsters)
-    const isDangerous = tile.owner !== 'player'
-    
-    if (!isDangerous) {
-      return false // Not dangerous, no need for protection
-    }
-    
-    // Store pending rewind data and show widget
-    const tileDescription = `${tile.owner} tile`
-    
-    this.setState({
-      pendingRewind: {
-        tile,
-        rewindIndex,
-        description: tileDescription
-      }
-    })
-    
-    return true // Always prevent the reveal initially, let widget handle the decision
-  }
-
-  // Handle rewind decision from widget
-  proceedWithRewind(): void {
-    if (!this.state.pendingRewind) return
-    
-    // Consume the rewind item  
-    removeItemFromInventory(this.state.run, this.state.pendingRewind.rewindIndex)
-    console.log('Rewind activated! Dangerous reveal prevented.')
-    
-    this.setState({
-      run: { ...this.state.run },
-      pendingRewind: null
-    })
-  }
-
-  proceedWithReveal(): void {
-    if (!this.state.pendingRewind) return
-    
-    const tile = this.state.pendingRewind.tile
-    
-    // Clear pending rewind and proceed with reveal
-    this.setState({ pendingRewind: null })
-    
-    // Manually trigger the reveal that was blocked
-    const success = revealTile(this.state.board, tile.x, tile.y, 'player')
-    if (success) {
-      const newBoardStatus = checkBoardStatus(this.state.board)
-      const isPlayerTile = tile.owner === 'player'
-      
-      // Award loot bonus for revealing opponent tiles
-      if (tile.owner === 'opponent') {
-        this.state.run.gold += this.state.run.loot
-      }
-      
-      // Handle tile content after checking board status
-      this.handleTileContent(tile)
-      
-      // Check if player died after handling content
-      if (this.state.gameStatus === 'player-died') {
-        return // Exit early if player died
-      }
-      
-      // Player continues turn if they revealed their own tile, otherwise switch to AI
-      const newTurn = (newBoardStatus === 'in-progress' && !isPlayerTile) ? 'opponent' : 'player'
-      
-      this.setState({
-        board: { ...this.state.board },
-        boardStatus: newBoardStatus,
-        currentTurn: newTurn
-      })
-      
-      // Handle board completion
-      if (newBoardStatus === 'won') {
-        this.handleBoardWon()
-      } else if (newBoardStatus === 'lost') {
-        this.handleBoardLost()
-      } else if (newTurn === 'opponent') {
-        // Only trigger AI turn if no upgrade choice is pending
-        if (!this.state.upgradeChoice && !this.pendingUpgradeChoice) {
-          this.scheduleAITurn()
-        }
-      }
-    }
-  }
+  // Rewind methods removed
 
   // Show discard confirmation widget
   showDiscardConfirmation(index: number): void {
@@ -1163,6 +1070,9 @@ class GameStore {
       clearTimeout(this.aiTurnTimeout)
       this.aiTurnTimeout = null
     }
+    
+    // Reset AI for new game
+    this.ai.resetForNewBoard()
     
     this.setState(createInitialGameState())
   }

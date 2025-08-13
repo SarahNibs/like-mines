@@ -58,13 +58,7 @@ export const TRANSMUTE: ItemData = {
   immediate: false
 }
 
-export const REWIND: ItemData = {
-  id: 'rewind',
-  name: 'Rewind',
-  description: 'Prevents dangerous reveals - prompts before revealing enemy tiles or monsters. Hold SHIFT while clicking to auto-bypass.',
-  icon: '↶',
-  immediate: false
-}
+// REWIND REMOVED - was causing AI reveal issues
 
 export const WARD: ItemData = {
   id: 'ward',
@@ -123,12 +117,12 @@ export const ALL_ITEMS: ItemData[] = [
   // Immediate items
   GOLD_COIN, FIRST_AID, SHOP,
   // Inventory items  
-  CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
+  CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
 ]
 
 // Items available for purchase in shops (excludes shop itself, gold, and negative items like bear traps)
 export const SHOP_ITEMS: ItemData[] = [
-  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, REWIND, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
+  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE
 ]
 
 // =============================================================================

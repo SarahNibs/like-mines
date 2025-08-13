@@ -249,16 +249,7 @@
     </div>
     
     <!-- Rewind confirmation widget -->
-    <div id="rewind-widget" class="status" style="height: 120px; display: none; margin-left: 20px;">
-      <div class="status-content">
-        <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 8px;">⚠️ Rewind Protection</div>
-        <div id="rewind-message" style="margin-bottom: 10px;"></div>
-        <div style="display: flex; gap: 10px;">
-          <button id="rewind-proceed" style="padding: 8px 12px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Reveal Anyway</button>
-          <button id="rewind-cancel" style="padding: 8px 12px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer;">Use Rewind</button>
-        </div>
-      </div>
-    </div>
+    <!-- Rewind widget removed -->
     
     <!-- Shop widget -->
     <div id="shop-widget" class="status" style="height: 200px; display: none; margin-left: 20px;">
@@ -339,6 +330,20 @@
           align-items: center;
         "></div>
       </div>
+      
+      <!-- Game controls widget below trophies -->
+      <div id="game-controls-widget" style="
+        width: 500px; 
+        background: #333; 
+        border: 2px solid #444; 
+        padding: 10px; 
+        border-radius: 8px; 
+        margin-top: 10px; 
+        text-align: center;
+        ">
+        <button id="start-new-run" style="padding: 8px 16px; background: #ffa500; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">Start New Run</button>
+        <div style="color: #aaa; font-size: 12px;">Left click to act; right click to annotate or discard</div>
+      </div>
     </div>
     
     <!-- Right panel: Status, Inventory, Clues -->
@@ -351,7 +356,6 @@
           <div id="opponent-tiles">AI tiles revealed: 0/0</div>
           <div style="margin-top: 8px;">
             <button id="end-turn" style="padding: 8px 16px; background: #6a6a6a; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">End Turn</button>
-            <button id="start-new-run" style="padding: 8px 16px; margin-left: 8px; background: #ffa500; color: white; border: none; border-radius: 4px; cursor: pointer;">Start New Run</button>
           </div>
         </div>
       </div>
@@ -373,9 +377,7 @@
               <div id="hand-b" class="hand"></div>
             </div>
           </div>
-          <div style="margin-top: 8px; font-size: 12px; color: #aaa;">
-            Right-click tiles to annotate (gray slash)
-          </div>
+          <!-- Help text removed from clue widget -->
         </div>
       </div>
     </div>
