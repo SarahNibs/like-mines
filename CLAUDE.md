@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Most Important
+
+When performing refactoring, the single most important goal is to retain all existing functionality. We are not rewriting functional logic, not using stubs "for now", not breaking event handling, etc etc. If this means we have to go very slowly with smaller refactors that's okay.
+
 ## Project Overview
 
 This is a **Roguelike Minesweeper** game - a web-based, turn-based puzzle/strategy game that combines Minesweeper-style adjacency logic with roguelike progression elements. Players compete against AI opponents in a race to reveal all their own tiles first.

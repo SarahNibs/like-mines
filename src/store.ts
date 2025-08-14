@@ -924,7 +924,7 @@ class GameStore {
         
         // Count Traders upgrades for additional items
         const tradersCount = this.state.run.upgrades.filter(id => id === 'traders').length
-        const baseItemCount = 4
+        const baseItemCount = 5
         const totalItemCount = baseItemCount + tradersCount
         
         // Generate item costs: Level 3: 2,3,4,5 / Level 6: 3,4,5,6 / Level 9: 4,5,6,7 etc.

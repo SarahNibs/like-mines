@@ -2,6 +2,10 @@ import './style.css'
 import { gameStore } from './store'
 import { GameRenderer } from './renderer'
 import { ALL_UPGRADES_LOOKUP } from './upgrades'
+import { showDetectorTooltip, hideDetectorTooltip, showItemTooltip, hideItemTooltip } from './tooltips'
+import { updateTrophies } from './trophies'
+import { isMouseOverTileContent, isMouseOverDetectorScan, isMouseOverChainIndicator } from './tileHover'
+import { updateCharacterSelection } from './characterSelection'
 
 console.log('Emdash Delve - Starting up...')
 
@@ -44,83 +48,6 @@ const trophiesContainer = document.getElementById('trophies-container')!
 const characterSelectOverlay = document.getElementById('character-select-overlay')!
 const characterChoicesEl = document.getElementById('character-choices')!
 
-// Detector hover tooltip element
-let detectorTooltip: HTMLElement | null = null
-// General item/upgrade tooltip element
-let itemTooltip: HTMLElement | null = null
-
-// Create detector tooltip if it doesn't exist
-function createDetectorTooltip(): HTMLElement {
-  if (!detectorTooltip) {
-    detectorTooltip = document.createElement('div')
-    detectorTooltip.style.position = 'absolute'
-    detectorTooltip.style.background = 'rgba(0, 0, 0, 0.9)'
-    detectorTooltip.style.color = '#fff'
-    detectorTooltip.style.padding = '8px'
-    detectorTooltip.style.borderRadius = '4px'
-    detectorTooltip.style.fontSize = '12px'
-    detectorTooltip.style.fontFamily = 'Courier New, monospace'
-    detectorTooltip.style.pointerEvents = 'none'
-    detectorTooltip.style.zIndex = '1000'
-    detectorTooltip.style.display = 'none'
-    detectorTooltip.style.border = '1px solid #666'
-    document.body.appendChild(detectorTooltip)
-  }
-  return detectorTooltip
-}
-
-// Show detector tooltip
-function showDetectorTooltip(x: number, y: number, playerCount: number, opponentCount: number, neutralCount: number): void {
-  const tooltip = createDetectorTooltip()
-  tooltip.innerHTML = `Detector Scan (this tile and adjacent):<br/>Player tiles: ${playerCount}<br/>Opponent tiles: ${opponentCount}<br/>Neutral tiles: ${neutralCount}`
-  tooltip.style.left = `${x + 10}px`
-  tooltip.style.top = `${y - 10}px`
-  tooltip.style.display = 'block'
-}
-
-// Hide detector tooltip
-function hideDetectorTooltip(): void {
-  if (detectorTooltip) {
-    detectorTooltip.style.display = 'none'
-  }
-}
-
-// Create item tooltip if it doesn't exist
-function createItemTooltip(): HTMLElement {
-  if (!itemTooltip) {
-    itemTooltip = document.createElement('div')
-    itemTooltip.style.position = 'absolute'
-    itemTooltip.style.background = 'rgba(0, 0, 0, 0.9)'
-    itemTooltip.style.color = '#fff'
-    itemTooltip.style.padding = '8px'
-    itemTooltip.style.borderRadius = '4px'
-    itemTooltip.style.fontSize = '12px'
-    itemTooltip.style.fontFamily = 'Courier New, monospace'
-    itemTooltip.style.pointerEvents = 'none'
-    itemTooltip.style.zIndex = '1000'
-    itemTooltip.style.display = 'none'
-    itemTooltip.style.border = '1px solid #666'
-    itemTooltip.style.maxWidth = '200px'
-    document.body.appendChild(itemTooltip)
-  }
-  return itemTooltip
-}
-
-// Show item tooltip
-function showItemTooltip(x: number, y: number, title: string, description: string): void {
-  const tooltip = createItemTooltip()
-  tooltip.innerHTML = `<strong>${title}</strong><br/>${description}`
-  tooltip.style.left = `${x + 10}px`
-  tooltip.style.top = `${y - 10}px`
-  tooltip.style.display = 'block'
-}
-
-// Hide item tooltip
-function hideItemTooltip(): void {
-  if (itemTooltip) {
-    itemTooltip.style.display = 'none'
-  }
-}
 
 // Update UI with current game state
 function updateUI() {
@@ -291,10 +218,10 @@ function updateUI() {
   updateUpgradeChoiceWidget(state)
   
   // Update character selection
-  updateCharacterSelection(state)
+  updateCharacterSelection(state, characterSelectOverlay, characterChoicesEl, (characterId: string) => gameStore.selectCharacter(characterId))
   
   // Update trophies
-  updateTrophies(state)
+  updateTrophies(state, trophiesContainer)
   
   // Update clues only when necessary
   let annotatedCount = 0
@@ -459,8 +386,8 @@ function updateShopWidget(state: any) {
       canvas.style.pointerEvents = 'auto' // Enable board interactions
     }
     
-    // Create shop item buttons (show only first 3 items)
-    state.shopItems.slice(0, 3).forEach((shopItem: any, index: number) => {
+    // Create shop item buttons
+    state.shopItems.forEach((shopItem: any, index: number) => {
       const itemEl = document.createElement('div')
       itemEl.style.display = 'flex'
       itemEl.style.alignItems = 'center'
@@ -542,78 +469,6 @@ function updateUpgradeChoiceWidget(state: any) {
   }
 }
 
-// Update character selection display
-async function updateCharacterSelection(state: any) {
-  if (state.gameStatus === 'character-select') {
-    characterSelectOverlay.style.display = 'flex'
-    
-    // Import character data
-    const { ALL_CHARACTERS } = await import('./characters')
-    
-    // Clear existing choices
-    characterChoicesEl.innerHTML = ''
-    
-    // Create character buttons
-    ALL_CHARACTERS.forEach((character: any) => {
-      const characterBtn = document.createElement('button')
-      characterBtn.style.cssText = `
-        width: 120px;
-        height: 120px;
-        background: #444;
-        border: 2px solid #666;
-        border-radius: 8px;
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        color: white;
-        font-family: 'Courier New', monospace;
-        font-size: 12px;
-        transition: all 0.2s ease;
-        position: relative;
-      `
-      
-      const characterIcon = document.createElement('div')
-      characterIcon.textContent = character.icon
-      characterIcon.style.fontSize = '32px'
-      
-      const characterName = document.createElement('div')
-      characterName.textContent = character.name
-      characterName.style.fontWeight = 'bold'
-      characterName.style.fontSize = '14px'
-      
-      // Hover tooltip
-      characterBtn.title = character.description
-      
-      // Hover effects
-      characterBtn.addEventListener('mouseenter', () => {
-        characterBtn.style.borderColor = '#ffa500'
-        characterBtn.style.background = '#555'
-        characterBtn.style.transform = 'scale(1.05)'
-      })
-      
-      characterBtn.addEventListener('mouseleave', () => {
-        characterBtn.style.borderColor = '#666'
-        characterBtn.style.background = '#444'
-        characterBtn.style.transform = 'scale(1)'
-      })
-      
-      // Click handler
-      characterBtn.addEventListener('click', () => {
-        console.log(`Selected character: ${character.id}`)
-        gameStore.selectCharacter(character.id)
-      })
-      
-      characterBtn.appendChild(characterIcon)
-      characterBtn.appendChild(characterName)
-      characterChoicesEl.appendChild(characterBtn)
-    })
-  } else {
-    characterSelectOverlay.style.display = 'none'
-  }
-}
 
 // Helper to get tile color based on reveal status
 function getTileDisplayColor(boardTile: any): string {
@@ -1072,105 +927,6 @@ canvas.addEventListener('contextmenu', (event) => {
   }
 })
 
-// Check if mouse is over a tile with item/upgrade/monster content (specifically over the icon area)
-function isMouseOverTileContent(mouseX: number, mouseY: number, tile: any, tileSize: number, startX: number, startY: number, gap: number): boolean {
-  if (!tile.itemData && !tile.upgradeData && !tile.monsterData) return false
-  if (tile.revealed) return false // Don't show hover on revealed tiles
-  
-  // Calculate tile position
-  const x = startX + tile.x * (tileSize + gap)
-  const y = startY + tile.y * (tileSize + gap)
-  
-  // Icon is positioned at x + tileSize * 0.25, y + tileSize * 0.25 with font size tileSize * 0.4
-  // Create a hover area around the icon position (roughly icon size)
-  const iconX = x + tileSize * 0.25
-  const iconY = y + tileSize * 0.25
-  const iconSize = tileSize * 0.4
-  const iconHalfSize = iconSize * 0.5
-  
-  // Check if mouse is within the icon area (centered around icon position)
-  return mouseX >= iconX - iconHalfSize && mouseX <= iconX + iconHalfSize && 
-         mouseY >= iconY - iconHalfSize && mouseY <= iconY + iconHalfSize
-}
-
-// Check if mouse is over detector scan area for a tile
-function isMouseOverDetectorScan(mouseX: number, mouseY: number, tile: any, tileSize: number, startX: number, startY: number, gap: number): boolean {
-  if (!tile.detectorScan) return false
-  
-  // Calculate tile position
-  const x = startX + tile.x * (tileSize + gap)
-  const y = startY + tile.y * (tileSize + gap)
-  
-  // Calculate detector box position (same logic as renderer)
-  const scanText = `${tile.detectorScan.playerAdjacent}/${tile.detectorScan.opponentAdjacent}/${tile.detectorScan.neutralAdjacent}`
-  
-  // Approximate text width calculation (we'll use a rough estimate)
-  const textWidth = scanText.length * (tileSize * 0.08) // Rough approximation
-  const textHeight = tileSize * 0.12
-  const boxPadding = 2
-  const boxWidth = textWidth + boxPadding * 2
-  const boxHeight = textHeight + boxPadding * 2
-  const boxX = x + tileSize - boxWidth - 2
-  const boxY = y + tileSize - boxHeight - 2
-  
-  // Check if mouse is within the box
-  return mouseX >= boxX && mouseX <= boxX + boxWidth && 
-         mouseY >= boxY && mouseY <= boxY + boxHeight
-}
-
-// Check if mouse is over chain indicator
-function isMouseOverChainIndicator(mouseX: number, mouseY: number, tile: any, tileSize: number, startX: number, startY: number, gap: number, board: any): boolean {
-  if (!tile.chainData || tile.revealed) return false
-  
-  // Check if the required tile is revealed - if so, chain is no longer active
-  const requiredTile = board.tiles[tile.chainData.requiredTileY][tile.chainData.requiredTileX]
-  if (requiredTile.revealed) return false
-  
-  const x = startX + tile.x * (tileSize + gap)
-  const y = startY + tile.y * (tileSize + gap)
-  const chainData = tile.chainData
-  
-  if (chainData.isBlocked) {
-    // Check if hovering over the lock icon in center
-    const centerX = x + tileSize / 2
-    const centerY = y + tileSize / 2
-    const radius = tileSize * 0.15
-    const distance = Math.sqrt((mouseX - centerX) * (mouseX - centerX) + (mouseY - centerY) * (mouseY - centerY))
-    return distance <= radius * 1.5 // Slightly larger hover area
-  } else {
-    // Check if hovering over the key icon on the edge
-    const dx = chainData.requiredTileX - tile.x
-    const dy = chainData.requiredTileY - tile.y
-    const keyRadius = tileSize * 0.12
-    const centerX = x + tileSize / 2
-    const centerY = y + tileSize / 2
-    
-    let keyX: number, keyY: number
-    
-    if (Math.abs(dx) > Math.abs(dy)) {
-      // Horizontal positioning
-      if (dx > 0) {
-        keyX = x + tileSize - keyRadius * 1.2
-        keyY = centerY
-      } else {
-        keyX = x + keyRadius * 1.2
-        keyY = centerY
-      }
-    } else {
-      // Vertical positioning
-      if (dy > 0) {
-        keyX = centerX
-        keyY = y + tileSize - keyRadius * 1.2
-      } else {
-        keyX = centerX
-        keyY = y + keyRadius * 1.2
-      }
-    }
-    
-    const distance = Math.sqrt((mouseX - keyX) * (mouseX - keyX) + (mouseY - keyY) * (mouseY - keyY))
-    return distance <= keyRadius * 1.5 // Slightly larger hover area
-  }
-}
 
 // Mouse hover handling for board tiles to highlight corresponding clue tiles and show detector tooltips
 canvas.addEventListener('mousemove', (event) => {
@@ -1426,51 +1182,6 @@ console.log('Player tiles total:', initialState.board.playerTilesTotal)
 console.log('Opponent tiles total:', initialState.board.opponentTilesTotal)
 console.log('First few tiles:', initialState.board.tiles[0].slice(0, 3))
 
-// Update trophies display
-function updateTrophies(state: any) {
-  console.log('Updating trophies display. Trophy count:', state.run.trophies.length)
-  trophiesContainer.innerHTML = ''
-  
-  // Sort trophies: gold first, then stolen gold, then silver
-  const sortedTrophies = [...state.run.trophies].sort((a: any, b: any) => {
-    // Priority order: 1=gold, 2=stolen gold, 3=silver
-    const getPriority = (trophy: any) => {
-      if (trophy.type === 'gold' && !trophy.stolen) return 1
-      if (trophy.type === 'gold' && trophy.stolen) return 2
-      return 3 // silver
-    }
-    
-    return getPriority(a) - getPriority(b)
-  })
-  
-  sortedTrophies.forEach((trophy: any, index: number) => {
-    const trophyEl = document.createElement('div')
-    trophyEl.className = `trophy ${trophy.type}`
-    if (trophy.stolen) {
-      trophyEl.classList.add('stolen')
-    }
-    
-    // Set trophy icon based on type
-    if (trophy.type === 'gold') {
-      trophyEl.textContent = '🏆'
-    } else {
-      trophyEl.textContent = '🥈'  // Silver medal for silver trophies
-    }
-    
-    // Set tooltip - explicitly set it
-    let tooltipText = ''
-    if (trophy.stolen) {
-      tooltipText = `Stolen by ${trophy.stolenBy}`
-    } else if (trophy.type === 'gold') {
-      tooltipText = 'Victories!'
-    } else {
-      tooltipText = 'Victory!'
-    }
-    trophyEl.setAttribute('title', tooltipText)
-    
-    trophiesContainer.appendChild(trophyEl)
-  })
-}
 
 // Debug controls toggle with 'd' key
 document.addEventListener('keydown', (event) => {
