@@ -9,6 +9,9 @@ import { highlightCluetilesForBoardTile, clearClueTileHighlights, getTileDisplay
 import { updateInventory } from './inventory'
 import { updateUpgrades, updateUpgradeChoiceWidget, clearUpgradeStateCache } from './upgradeDisplay'
 import { updateShopWidget, updateDiscardWidget } from './shopWidget'
+import { updateHoverHighlights as updateHoverHighlightsModule } from './hoverHighlights'
+import { handleCanvasClick, handleCanvasRightClick } from './canvasEventHandlers'
+import { setupButtonHandlers } from './buttonHandlers'
 
 console.log('Emdash Delve - Starting up...')
 
@@ -266,20 +269,7 @@ let savedClueScrollTop = 0
 
 // Update hover highlights on board
 function updateHoverHighlights() {
-  if (currentHoverTiles) {
-    // Active hover - bright highlights
-    console.log('Setting BRIGHT highlights for', currentHoverTiles.tiles.length, 'tiles')
-    renderer.setHighlightedTiles(currentHoverTiles.tiles)
-    renderer.setExtraHighlighted(currentHoverTiles.extraTiles || [])
-  } else if (persistentHoverTiles) {
-    // Persistent hover - dimmer highlights  
-    console.log('Setting DIMMED highlights for', persistentHoverTiles.tiles.length, 'tiles')
-    renderer.setDimmedHighlights(persistentHoverTiles.tiles, persistentHoverTiles.extraTiles || [])
-  } else {
-    // No highlights
-    console.log('Clearing all highlights')
-    renderer.clearHighlights()
-  }
+  updateHoverHighlightsModule(currentHoverTiles, persistentHoverTiles, renderer)
 }
 
 
@@ -608,129 +598,20 @@ function render() {
   updateUI()
 }
 
+// Helper function to update hover state
+function setHoverTiles(current: any, persistent: any) {
+  currentHoverTiles = current
+  persistentHoverTiles = persistent
+}
+
 // Click handling
 canvas.addEventListener('click', (event) => {
-  const rect = canvas.getBoundingClientRect()
-  const mouseX = event.clientX - rect.left
-  const mouseY = event.clientY - rect.top
-  const shiftKey = event.shiftKey
-  
-  const state = gameStore.getState()
-  const tilePos = renderer.getTileFromCoordinates(state.board, mouseX, mouseY)
-  
-  console.log('Click at canvas coordinates:', mouseX, mouseY)
-  console.log('Tile position:', tilePos)
-  
-  if (tilePos) {
-    // Check if we're in transmute mode
-    if (state.transmuteMode) {
-      console.log('Transmute mode: attempting to transmute tile at', tilePos.x, tilePos.y)
-      const success = gameStore.transmuteTileAt(tilePos.x, tilePos.y)
-      console.log('Transmute success:', success)
-      return // Don't do normal tile reveal
-    }
-    
-    // Check if we're in detector mode
-    if (state.detectorMode) {
-      console.log('Detector mode: attempting to detect tile at', tilePos.x, tilePos.y)
-      const success = gameStore.detectTileAt(tilePos.x, tilePos.y)
-      console.log('Detector success:', success)
-      return // Don't do normal tile reveal
-    }
-    
-    // Check if we're in key mode
-    if (state.keyMode) {
-      console.log('Key mode: attempting to unlock tile at', tilePos.x, tilePos.y)
-      const success = gameStore.useKeyAt(tilePos.x, tilePos.y)
-      console.log('Key success:', success)
-      return // Don't do normal tile reveal
-    }
-    
-    // Check if we're in staff mode
-    if (state.staffMode) {
-      console.log('Staff mode: attempting to target monster at', tilePos.x, tilePos.y)
-      const success = gameStore.useStaffAt(tilePos.x, tilePos.y)
-      console.log('Staff success:', success)
-      return // Don't do normal tile reveal
-    }
-    
-    // Check if we're in ring mode
-    if (state.ringMode) {
-      console.log('Ring mode: attempting to remove fog at', tilePos.x, tilePos.y)
-      const success = gameStore.useRingAt(tilePos.x, tilePos.y)
-      console.log('Ring success:', success)
-      return // Don't do normal tile reveal
-    }
-    
-    console.log('Attempting to reveal tile at', tilePos.x, tilePos.y, shiftKey ? '(SHIFT bypass)' : '')
-    const wasPlayerTurn = state.currentTurn === 'player'
-    const success = gameStore.revealTileAt(tilePos.x, tilePos.y, shiftKey)
-    console.log('Reveal success:', success)
-    
-    // Only clear highlights if turn actually changes
-    const newState = gameStore.getState()
-    if (success && wasPlayerTurn && newState.currentTurn !== 'player') {
-      // Clear highlights only when turn switches from player to AI
-      currentHoverTiles = null
-      persistentHoverTiles = null
-      renderer.clearAllHighlights()
-      render()
-    }
-  } else {
-    // Clicked outside any tile - clear all highlights
-    currentHoverTiles = null
-    persistentHoverTiles = null
-    renderer.clearAllHighlights()
-    render()
-  }
+  handleCanvasClick(event, canvas, gameStore, renderer, currentHoverTiles, persistentHoverTiles, setHoverTiles, render)
 })
 
 // Right-click handling for annotations and transmute cancel
 canvas.addEventListener('contextmenu', (event) => {
-  event.preventDefault() // Prevent context menu
-  
-  const state = gameStore.getState()
-  
-  // Right-click cancels transmute mode
-  if (state.transmuteMode) {
-    gameStore.cancelTransmute()
-    return
-  }
-  
-  // Right-click cancels detector mode
-  if (state.detectorMode) {
-    gameStore.cancelDetector()
-    return
-  }
-  
-  // Right-click cancels key mode
-  if (state.keyMode) {
-    gameStore.cancelKey()
-    return
-  }
-  
-  // Right-click cancels staff or ring mode
-  if (state.staffMode) {
-    gameStore.cancelStaff()
-    return
-  }
-  
-  if (state.ringMode) {
-    gameStore.cancelRing()
-    return
-  }
-  
-  const rect = canvas.getBoundingClientRect()
-  const mouseX = event.clientX - rect.left
-  const mouseY = event.clientY - rect.top
-  
-  const tilePos = renderer.getTileFromCoordinates(state.board, mouseX, mouseY)
-  
-  if (tilePos) {
-    console.log('Toggling annotation for tile at', tilePos.x, tilePos.y)
-    const success = gameStore.toggleAnnotation(tilePos.x, tilePos.y)
-    console.log('Annotation toggle success:', success)
-  }
+  handleCanvasRightClick(event, canvas, gameStore, renderer)
 })
 
 
@@ -838,56 +719,8 @@ canvas.addEventListener('mouseleave', () => {
 })
 
 
-// Debug button handlers
-// Debug controls removed - replaced with keyboard shortcuts below
-
-// End Turn button handler
-endTurnBtn.addEventListener('click', () => {
-  console.log('Ending turn manually...')
-  gameStore.endTurn()
-})
-
-// Start New Run button handler
-document.getElementById('start-new-run')!.addEventListener('click', () => {
-  console.log('Starting new run...')
-  clearUpgradeStateCache() // Clear upgrade state cache
-  gameStore.resetGame()
-})
-
-// Rewind widget handlers removed
-
-// Shop widget button handlers
-shopCloseBtn.addEventListener('click', () => {
-  console.log('Closing shop')
-  gameStore.closeShop()
-})
-
-// Discard widget button handlers
-discardConfirmBtn.addEventListener('click', () => {
-  console.log('Player confirmed item discard')
-  gameStore.confirmDiscard()
-})
-
-discardCancelBtn.addEventListener('click', () => {
-  console.log('Player cancelled item discard')
-  gameStore.cancelDiscard()
-})
-
-// Upgrade choice widget button handlers
-upgradeChoice0Btn.addEventListener('click', () => {
-  console.log('Player chose upgrade option 0')
-  gameStore.chooseUpgrade(0)
-})
-
-upgradeChoice1Btn.addEventListener('click', () => {
-  console.log('Player chose upgrade option 1')
-  gameStore.chooseUpgrade(1)
-})
-
-upgradeChoice2Btn.addEventListener('click', () => {
-  console.log('Player chose upgrade option 2')
-  gameStore.chooseUpgrade(2)
-})
+// Set up all button event handlers
+setupButtonHandlers(gameStore, clearUpgradeStateCache)
 
 // General click handler to clear highlights when clicking outside clue areas
 document.addEventListener('click', (event) => {
