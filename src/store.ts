@@ -107,16 +107,19 @@ class GameStore {
         return // Exit early if player died
       }
       
+      // Check if Protection should activate before consuming it
+      const hadProtection = this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0
+      
       // Consume Protection charge on ANY tile reveal (if active)
-      if (this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0) {
+      if (hadProtection) {
         this.state.run.temporaryBuffs.protection -= 1
         console.log(`Protection consumed! ${this.state.run.temporaryBuffs.protection} charges remaining.`)
       }
       
-      // Player continues turn if they revealed their own tile, otherwise switch to AI
+      // Player continues turn if they revealed their own tile, or if protection was active
       let newTurn = 'player'
-      if (newBoardStatus === 'in-progress' && !isPlayerTile) {
-        // Player revealed opponent/neutral tile - turn ends
+      if (newBoardStatus === 'in-progress' && !isPlayerTile && !hadProtection) {
+        // Player revealed opponent/neutral tile without protection - turn ends
         newTurn = 'opponent'
       }
       

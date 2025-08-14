@@ -27,47 +27,63 @@ export function updateShopWidget(
       canvas.style.pointerEvents = 'auto' // Enable board interactions
     }
     
-    // Create shop item buttons
+    // Set up horizontal layout for items
+    shopItemsEl.style.display = 'flex'
+    shopItemsEl.style.flexWrap = 'wrap'
+    shopItemsEl.style.gap = '8px'
+    shopItemsEl.style.justifyContent = 'flex-start'
+    shopItemsEl.style.marginBottom = '8px'
+    
+    // Create shop item buttons in horizontal layout
     state.shopItems.forEach((shopItem: any, index: number) => {
       const itemEl = document.createElement('div')
       itemEl.style.display = 'flex'
+      itemEl.style.flexDirection = 'column'
       itemEl.style.alignItems = 'center'
-      itemEl.style.justifyContent = 'space-between'
-      itemEl.style.padding = '6px'
+      itemEl.style.padding = '4px'
       itemEl.style.border = '1px solid #666'
-      itemEl.style.borderRadius = '2px'
+      itemEl.style.borderRadius = '4px'
       itemEl.style.background = '#444'
-      itemEl.style.minHeight = '32px'
+      itemEl.style.cursor = 'pointer'
+      itemEl.style.minWidth = '60px'
       
-      const itemName = document.createElement('span')
-      itemName.textContent = shopItem.item.name
-      itemName.style.fontSize = '14px'
-      itemName.title = `${shopItem.item.name}: ${shopItem.item.description}`
+      // Item icon (clickable)
+      const itemIcon = document.createElement('div')
+      itemIcon.textContent = shopItem.item.icon || '📦'
+      itemIcon.style.fontSize = '24px'
+      itemIcon.style.marginBottom = '2px'
+      itemIcon.style.cursor = 'pointer'
+      itemIcon.title = `${shopItem.item.name}: ${shopItem.item.description}`
       
-      const buyBtn = document.createElement('button')
-      buyBtn.textContent = `${shopItem.cost}g`
-      buyBtn.style.padding = '2px 6px'
-      buyBtn.style.fontSize = '11px'
-      buyBtn.style.border = 'none'
-      buyBtn.style.borderRadius = '2px'
-      buyBtn.style.cursor = 'pointer'
+      // Gold cost
+      const costLabel = document.createElement('div')
+      costLabel.textContent = `${shopItem.cost}g`
+      costLabel.style.fontSize = '11px'
+      costLabel.style.color = '#ffa500'
+      costLabel.style.fontWeight = 'bold'
       
       // Check if player can afford
       const canAfford = state.run.gold >= shopItem.cost
       
       if (canAfford) {
-        buyBtn.style.background = '#4a7c59'
-        buyBtn.style.color = 'white'
-        buyBtn.addEventListener('click', () => gameStore.buyShopItem(index))
+        itemEl.addEventListener('click', () => gameStore.buyShopItem(index))
+        itemEl.addEventListener('mouseenter', () => {
+          itemEl.style.background = '#555'
+          itemEl.style.borderColor = '#888'
+        })
+        itemEl.addEventListener('mouseleave', () => {
+          itemEl.style.background = '#444'
+          itemEl.style.borderColor = '#666'
+        })
       } else {
-        buyBtn.style.background = '#7c4a4a'
-        buyBtn.style.color = '#ccc'
-        buyBtn.disabled = true
-        buyBtn.title = 'Not enough gold'
+        itemEl.style.opacity = '0.5'
+        itemEl.style.cursor = 'not-allowed'
+        itemIcon.title = `${shopItem.item.name}: ${shopItem.item.description}\n\nNot enough gold (need ${shopItem.cost}g)`
+        costLabel.style.color = '#ccc'
       }
       
-      itemEl.appendChild(itemName)
-      itemEl.appendChild(buyBtn)
+      itemEl.appendChild(itemIcon)
+      itemEl.appendChild(costLabel)
       shopItemsEl.appendChild(itemEl)
     })
   } else {

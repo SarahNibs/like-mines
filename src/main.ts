@@ -227,17 +227,21 @@ function updateUI() {
   updateTrophies(state, trophiesContainer)
   
   // Update clues only when necessary
-  let annotatedCount = 0
+  // Calculate annotation hash for hash detection (include both position and type)
+  const annotationData = []
   for (let y = 0; y < state.board.height; y++) {
     for (let x = 0; x < state.board.width; x++) {
-      if (state.board.tiles[y][x].annotated !== 'none') annotatedCount++
+      const tile = state.board.tiles[y][x]
+      if (tile.annotated !== 'none') {
+        annotationData.push(`${x},${y}:${tile.annotated}`)
+      }
     }
   }
   
   const currentCluesHash = JSON.stringify({
     cluesLength: state.clues.length,
     revealedCount: state.board.playerTilesRevealed + state.board.opponentTilesRevealed,
-    annotatedCount: annotatedCount,
+    annotations: annotationData.join('|'),
     leftHandUpgrades: state.run.upgrades.filter(id => id === 'left-hand').length,
     rightHandUpgrades: state.run.upgrades.filter(id => id === 'right-hand').length,
     characterId: state.run.characterId || 'none'

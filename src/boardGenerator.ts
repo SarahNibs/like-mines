@@ -287,7 +287,7 @@ function spawnUpgrades(tiles: Tile[][], width: number, height: number, count: nu
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const tile = tiles[y][x]
-      if (tile.content === TileContent.Empty) {
+      if (tile.content === TileContent.Empty && !tile.revealed) {
         allEmptyTiles.push({x, y})
         if (tile.chainData && tile.chainData.isBlocked) {
           lockedTiles.push({x, y})
