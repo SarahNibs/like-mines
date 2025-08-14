@@ -1,11 +1,14 @@
 import './style.css'
 import { gameStore } from './store'
 import { GameRenderer } from './renderer'
-import { ALL_UPGRADES_LOOKUP } from './upgrades'
 import { showDetectorTooltip, hideDetectorTooltip, showItemTooltip, hideItemTooltip } from './tooltips'
 import { updateTrophies } from './trophies'
 import { isMouseOverTileContent, isMouseOverDetectorScan, isMouseOverChainIndicator } from './tileHover'
 import { updateCharacterSelection } from './characterSelection'
+import { highlightCluetilesForBoardTile, clearClueTileHighlights, getTileDisplayColor } from './clueHighlighting'
+import { updateInventory } from './inventory'
+import { updateUpgrades, updateUpgradeChoiceWidget, clearUpgradeStateCache } from './upgradeDisplay'
+import { updateShopWidget, updateDiscardWidget } from './shopWidget'
 
 console.log('Emdash Delve - Starting up...')
 
@@ -201,21 +204,21 @@ function updateUI() {
   }
   
   // Update inventory
-  updateInventory(state)
+  updateInventory(state, inventoryEl, (index: number) => gameStore.useInventoryItem(index), (index: number) => gameStore.showDiscardConfirmation(index))
   
   // Update upgrades
-  updateUpgrades(state)
+  updateUpgrades(state, upgradesEl)
   
   // Rewind widget removed
   
   // Update shop widget
-  updateShopWidget(state)
+  updateShopWidget(state, shopWidget, shopItemsEl, shopCloseBtn, canvas, gameStore)
   
   // Update discard widget
-  updateDiscardWidget(state)
+  updateDiscardWidget(state, discardWidget, discardMessage)
   
   // Update upgrade choice widget
-  updateUpgradeChoiceWidget(state)
+  updateUpgradeChoiceWidget(state, upgradeChoiceWidget, upgradeChoice0Btn, upgradeChoice1Btn, upgradeChoice2Btn)
   
   // Update character selection
   updateCharacterSelection(state, characterSelectOverlay, characterChoicesEl, (characterId: string) => gameStore.selectCharacter(characterId))
@@ -275,215 +278,14 @@ function updateHoverHighlights() {
   }
 }
 
-// Update inventory display
-function updateInventory(state: any) {
-  // Add null checks for DOM elements
-  if (!inventoryEl) {
-    console.error('Inventory element not found')
-    return
-  }
-  
-  inventoryEl.innerHTML = ''
-  
-  // Create inventory slots based on maxInventory (increased by Bag upgrades)
-  for (let i = 0; i < state.run.maxInventory; i++) {
-    const slot = document.createElement('div')
-    slot.className = 'inventory-slot'
-    const item = state.run.inventory[i]
-    
-    if (item) {
-      // Display icon with charge count for multi-use items
-      if (item.multiUse) {
-        slot.innerHTML = `${item.icon}<span class="charge-counter">${item.multiUse.currentUses}</span>`
-        slot.title = `${item.name}: ${item.description} (${item.multiUse.currentUses}/${item.multiUse.maxUses} uses)\nRight-click to discard`
-      } else {
-        slot.textContent = item.icon
-        slot.title = `${item.name}: ${item.description}\nRight-click to discard`
-      }
-      slot.addEventListener('click', () => gameStore.useInventoryItem(i))
-      slot.addEventListener('contextmenu', (e) => {
-        e.preventDefault()
-        gameStore.showDiscardConfirmation(i)
-      })
-    } else {
-      slot.classList.add('empty')
-    }
-    
-    inventoryEl.appendChild(slot)
-  }
-}
 
-// Track the last upgrade state to prevent unnecessary updates
-let lastUpgradeState: string[] = []
 
-// Update upgrades display
-function updateUpgrades(state: any) {
-  // Add null checks for DOM elements
-  if (!upgradesEl) {
-    console.error('Upgrades element not found')
-    return
-  }
-  
-  // Check if upgrades have actually changed to prevent flickering
-  const currentUpgrades = state.run.upgrades || []
-  const upgradesChanged = JSON.stringify(currentUpgrades) !== JSON.stringify(lastUpgradeState)
-  
-  if (!upgradesChanged) {
-    return // No changes, don't update
-  }
-  
-  lastUpgradeState = [...currentUpgrades]
-  upgradesEl.innerHTML = ''
-  
-  // Create upgrade icons synchronously - smaller and more compact for Run Progress box
-  currentUpgrades.forEach((upgradeId: string) => {
-    const upgrade = ALL_UPGRADES_LOOKUP.find(u => u.id === upgradeId)
-    if (upgrade) {
-      const icon = document.createElement('span')
-      icon.textContent = upgrade.icon
-      icon.title = `${upgrade.name}: ${upgrade.description}`
-      icon.style.fontSize = '16px'
-      icon.style.padding = '2px'
-      icon.style.margin = '1px'
-      icon.style.cursor = 'default'
-      icon.style.display = 'inline-block'
-      icon.style.border = '1px solid #666'
-      icon.style.borderRadius = '3px'
-      icon.style.background = '#444'
-      
-      upgradesEl.appendChild(icon)
-    }
-  })
-  
-  // If no upgrades, show a subtle message
-  if (currentUpgrades.length === 0) {
-    const message = document.createElement('span')
-    message.textContent = 'None'
-    message.style.fontSize = '11px'
-    message.style.color = '#888'
-    message.style.fontStyle = 'italic'
-    upgradesEl.appendChild(message)
-  }
-}
 
 // Rewind widget function removed
 
-// Update shop widget display
-function updateShopWidget(state: any) {
-  if (state.shopOpen && state.shopItems.length > 0) {
-    shopWidget.style.display = 'block'
-    shopItemsEl.innerHTML = ''
-    
-    // Check if board is won while shop is open
-    const isBoardWon = state.boardStatus === 'won'
-    
-    // Update close button text and disable board if board is won
-    if (isBoardWon) {
-      shopCloseBtn.textContent = 'Move on'
-      canvas.style.pointerEvents = 'none' // Disable board interactions
-    } else {
-      shopCloseBtn.textContent = 'Close'
-      canvas.style.pointerEvents = 'auto' // Enable board interactions
-    }
-    
-    // Create shop item buttons
-    state.shopItems.forEach((shopItem: any, index: number) => {
-      const itemEl = document.createElement('div')
-      itemEl.style.display = 'flex'
-      itemEl.style.alignItems = 'center'
-      itemEl.style.justifyContent = 'space-between'
-      itemEl.style.padding = '6px'
-      itemEl.style.border = '1px solid #666'
-      itemEl.style.borderRadius = '2px'
-      itemEl.style.background = '#444'
-      itemEl.style.minHeight = '32px'
-      
-      const itemName = document.createElement('span')
-      itemName.textContent = shopItem.item.name
-      itemName.style.fontSize = '14px'
-      itemName.title = `${shopItem.item.name}: ${shopItem.item.description}`
-      
-      const buyBtn = document.createElement('button')
-      buyBtn.textContent = `${shopItem.cost}g`
-      buyBtn.style.padding = '2px 6px'
-      buyBtn.style.fontSize = '11px'
-      buyBtn.style.border = 'none'
-      buyBtn.style.borderRadius = '2px'
-      buyBtn.style.cursor = 'pointer'
-      
-      // Check if player can afford
-      const canAfford = state.run.gold >= shopItem.cost
-      
-      if (canAfford) {
-        buyBtn.style.background = '#4a7c59'
-        buyBtn.style.color = 'white'
-        buyBtn.addEventListener('click', () => gameStore.buyShopItem(index))
-      } else {
-        buyBtn.style.background = '#7c4a4a'
-        buyBtn.style.color = '#ccc'
-        buyBtn.disabled = true
-        buyBtn.title = 'Not enough gold'
-      }
-      
-      itemEl.appendChild(itemName)
-      itemEl.appendChild(buyBtn)
-      shopItemsEl.appendChild(itemEl)
-    })
-  } else {
-    shopWidget.style.display = 'none'
-    // Re-enable board interactions when shop is closed
-    canvas.style.pointerEvents = 'auto'
-  }
-}
-
-// Update discard widget display
-function updateDiscardWidget(state: any) {
-  if (state.pendingDiscard) {
-    discardWidget.style.display = 'block'
-    discardMessage.textContent = `Discard "${state.pendingDiscard.itemName}"? This action cannot be undone.`
-  } else {
-    discardWidget.style.display = 'none'
-  }
-}
-
-function updateUpgradeChoiceWidget(state: any) {
-  if (state.upgradeChoice) {
-    upgradeChoiceWidget.style.display = 'block'
-    
-    // Update buttons with just icons and hover tooltips
-    const buttons = [upgradeChoice0Btn, upgradeChoice1Btn, upgradeChoice2Btn]
-    state.upgradeChoice.choices.forEach((upgrade: any, index: number) => {
-      if (index < buttons.length) {
-        buttons[index].textContent = upgrade.icon
-        buttons[index].title = `${upgrade.name}: ${upgrade.description}`
-        buttons[index].style.display = 'flex'
-      }
-    })
-    
-    // Hide unused buttons if there are fewer than 3 choices
-    for (let i = state.upgradeChoice.choices.length; i < buttons.length; i++) {
-      buttons[i].style.display = 'none'
-    }
-  } else {
-    upgradeChoiceWidget.style.display = 'none'
-  }
-}
 
 
-// Helper to get tile color based on reveal status
-function getTileDisplayColor(boardTile: any): string {
-  if (!boardTile.revealed) {
-    return '#555' // Unrevealed color
-  }
-  
-  // Revealed colors matching renderer (more vibrant)
-  switch (boardTile.owner) {
-    case 'player': return '#4CAF50'
-    case 'opponent': return '#F44336'  
-    case 'neutral': return '#9E9E9E'
-    default: return '#555'
-  }
-}
+
 
 // Update clue display
 function updateClues(state: any) {
@@ -1019,7 +821,7 @@ canvas.addEventListener('mousemove', (event) => {
   }
   
   if (tilePos) {
-    highlightCluetilesForBoardTile(tilePos.x, tilePos.y)
+    highlightCluetilesForBoardTile(tilePos.x, tilePos.y, state)
   } else {
     clearClueTileHighlights()
   }
@@ -1031,43 +833,6 @@ canvas.addEventListener('mouseleave', () => {
   hideItemTooltip()
 })
 
-// Function to highlight clue tiles that correspond to a board tile
-function highlightCluetilesForBoardTile(boardX: number, boardY: number) {
-  const state = gameStore.getState()
-  
-  // Find all clue tiles that match this board position
-  const matchingClueElements: HTMLElement[] = []
-  
-  state.clues.forEach((clue: any, clueIndex: number) => {
-    // Check hand A
-    clue.handA.tiles.forEach((tile: any, tileIndex: number) => {
-      if (tile.x === boardX && tile.y === boardY) {
-        const clueElement = document.querySelector(`.clue-tile[data-clue="${clueIndex}"][data-hand="A"][data-tile="${tileIndex}"]`)
-        if (clueElement) matchingClueElements.push(clueElement as HTMLElement)
-      }
-    })
-    
-    // Check hand B  
-    clue.handB.tiles.forEach((tile: any, tileIndex: number) => {
-      if (tile.x === boardX && tile.y === boardY) {
-        const clueElement = document.querySelector(`.clue-tile[data-clue="${clueIndex}"][data-hand="B"][data-tile="${tileIndex}"]`)
-        if (clueElement) matchingClueElements.push(clueElement as HTMLElement)
-      }
-    })
-  })
-  
-  // Clear previous highlights and add new ones
-  clearClueTileHighlights()
-  matchingClueElements.forEach(element => {
-    element.classList.add('board-hover-highlight')
-  })
-}
-
-function clearClueTileHighlights() {
-  document.querySelectorAll('.board-hover-highlight').forEach(element => {
-    element.classList.remove('board-hover-highlight')
-  })
-}
 
 // Debug button handlers
 document.getElementById('reveal-all-player')!.addEventListener('click', () => {
@@ -1087,7 +852,7 @@ document.getElementById('next-level')!.addEventListener('click', () => {
 
 document.getElementById('reset-game')!.addEventListener('click', () => {
   console.log('Resetting run...')
-  lastUpgradeState = [] // Clear upgrade state cache
+  clearUpgradeStateCache() // Clear upgrade state cache
   gameStore.resetGame()
 })
 
@@ -1100,7 +865,7 @@ endTurnBtn.addEventListener('click', () => {
 // Start New Run button handler
 document.getElementById('start-new-run')!.addEventListener('click', () => {
   console.log('Starting new run...')
-  lastUpgradeState = [] // Clear upgrade state cache
+  clearUpgradeStateCache() // Clear upgrade state cache
   gameStore.resetGame()
 })
 
