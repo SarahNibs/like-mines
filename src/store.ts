@@ -1110,16 +1110,15 @@ class GameStore {
     this.setState({ run })
   }
 
-  // Apply RICH upgrade effect: add gold items to adjacent tiles
+  // Apply RICH upgrade effect: place a single treasure chest on an adjacent tile
   private async applyRichUpgrade(x: number, y: number): Promise<void> {
     const board = this.state.board
     
-    // Import the actual GOLD_COIN item
-    const { GOLD_COIN } = await import('./items')
+    // Import the CHEST item
+    const { CHEST } = await import('./items')
     
-    let coinsAdded = false
-    
-    // Check all 8 adjacent positions
+    // Collect all valid adjacent positions
+    const adjacentTiles = []
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dy === 0) continue // Skip center tile
@@ -1128,17 +1127,24 @@ class GameStore {
         const adjY = y + dy
         const adjTile = getTileAt(board, adjX, adjY)
         
-        // Add gold to unrevealed tiles that don't already have content icons
+        // Only consider unrevealed empty tiles
         if (adjTile && !adjTile.revealed && adjTile.content === TileContent.Empty) {
-          adjTile.content = TileContent.Item
-          adjTile.itemData = GOLD_COIN
-          coinsAdded = true
+          adjacentTiles.push({ tile: adjTile, x: adjX, y: adjY })
         }
       }
     }
     
-    // Force a state update to make the coins visible immediately
-    if (coinsAdded) {
+    // Place chest on exactly one random adjacent tile (if any exist)
+    if (adjacentTiles.length > 0) {
+      const randomIndex = Math.floor(Math.random() * adjacentTiles.length)
+      const chosenTile = adjacentTiles[randomIndex]
+      
+      chosenTile.tile.content = TileContent.Item
+      chosenTile.tile.itemData = CHEST
+      
+      console.log(`Rich upgrade: placed treasure chest at (${chosenTile.x}, ${chosenTile.y})`)
+      
+      // Force a state update to make the chest visible immediately
       this.setState({
         board: { ...board }
       })

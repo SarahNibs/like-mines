@@ -12,6 +12,14 @@ export const GOLD_COIN: ItemData = {
   immediate: true
 }
 
+export const CHEST: ItemData = {
+  id: 'chest',
+  name: 'Treasure Chest',
+  description: 'Grants +4 gold',
+  icon: '💰',
+  immediate: true
+}
+
 export const FIRST_AID: ItemData = {
   id: 'first-aid',
   name: 'First Aid',
@@ -139,7 +147,7 @@ export const RING_OF_TRUE_SEEING: ItemData = {
 // All available items
 export const ALL_ITEMS: ItemData[] = [
   // Immediate items
-  GOLD_COIN, FIRST_AID, SHOP,
+  GOLD_COIN, CHEST, FIRST_AID, SHOP,
   // Inventory items  
   CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
 ]

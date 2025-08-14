@@ -356,10 +356,10 @@ function updateClues(state: any) {
       } else if (boardTile.annotated === 'dog-ear') {
         const dogEar = document.createElement('div')
         dogEar.style.position = 'absolute'
-        dogEar.style.top = '2px'
-        dogEar.style.right = '2px'
-        dogEar.style.width = '16px'
-        dogEar.style.height = '16px'
+        dogEar.style.top = '1px'
+        dogEar.style.right = '1px'
+        dogEar.style.width = '6px'
+        dogEar.style.height = '6px'
         dogEar.style.backgroundColor = '#90ee90'
         dogEar.style.borderRadius = '0 0 0 50%'
         dogEar.style.pointerEvents = 'none'
@@ -484,10 +484,10 @@ function updateClues(state: any) {
       } else if (boardTile.annotated === 'dog-ear') {
         const dogEar = document.createElement('div')
         dogEar.style.position = 'absolute'
-        dogEar.style.top = '2px'
-        dogEar.style.right = '2px'
-        dogEar.style.width = '16px'
-        dogEar.style.height = '16px'
+        dogEar.style.top = '1px'
+        dogEar.style.right = '1px'
+        dogEar.style.width = '6px'
+        dogEar.style.height = '6px'
         dogEar.style.backgroundColor = '#90ee90'
         dogEar.style.borderRadius = '0 0 0 50%'
         dogEar.style.pointerEvents = 'none'

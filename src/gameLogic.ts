@@ -329,6 +329,9 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       runState.gold += 1
       return 'Gained 1 gold!'
       
+    case 'chest':
+      runState.gold += 4
+      return 'Gained 4 gold from treasure chest!'
       
     case 'first-aid':
       runState.hp = Math.min(runState.maxHp, runState.hp + 10)
