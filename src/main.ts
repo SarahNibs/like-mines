@@ -929,7 +929,7 @@ gameStore.subscribe(() => {
   
   // Force upgrade refresh on game status changes (like run reset)
   if (state.gameStatus !== (window as any).lastGameStatus) {
-    lastUpgradeState = [] // Clear upgrade cache to force refresh
+    clearUpgradeStateCache() // Clear upgrade cache to force refresh
     ;(window as any).lastGameStatus = state.gameStatus
   }
   
