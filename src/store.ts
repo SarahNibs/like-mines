@@ -275,7 +275,7 @@ class GameStore {
     
     if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
       // Show upgrade choice widget instead of applying immediately
-      this.showUpgradeChoice()
+      this.triggerUpgradeChoice()
       console.log(`Found upgrade! Choose your enhancement.`)
       // Set a flag to prevent AI turn until upgrade is chosen
       this.pendingUpgradeChoice = true
@@ -917,7 +917,7 @@ class GameStore {
   }
 
   // Shop functionality
-  private openShop(): void {
+  openShop(): void {
     // Generate items and upgrades with costs scaling by level and Traders bonus
     import('./items').then(({ SHOP_ITEMS }) => {
       import('./upgrades').then(({ getAvailableUpgrades }) => {
@@ -1180,7 +1180,7 @@ class GameStore {
   }
 
   // Show upgrade choice widget
-  private showUpgradeChoice(): void {
+  triggerUpgradeChoice(): void {
     // Import available upgrades and pick 3 random ones
     import('./upgrades').then(({ getAvailableUpgrades }) => {
       const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)

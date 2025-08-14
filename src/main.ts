@@ -839,26 +839,7 @@ canvas.addEventListener('mouseleave', () => {
 
 
 // Debug button handlers
-document.getElementById('reveal-all-player')!.addEventListener('click', () => {
-  console.log('Revealing all player tiles...')
-  gameStore.revealAllPlayerTiles()
-})
-
-document.getElementById('reveal-all-opponent')!.addEventListener('click', () => {
-  console.log('Revealing all opponent tiles...')
-  gameStore.revealAllOpponentTiles()
-})
-
-document.getElementById('next-level')!.addEventListener('click', () => {
-  console.log('Manually advancing to next level...')
-  gameStore.progressToNextBoard()
-})
-
-document.getElementById('reset-game')!.addEventListener('click', () => {
-  console.log('Resetting run...')
-  clearUpgradeStateCache() // Clear upgrade state cache
-  gameStore.resetGame()
-})
+// Debug controls removed - replaced with keyboard shortcuts below
 
 // End Turn button handler
 endTurnBtn.addEventListener('click', () => {
@@ -952,15 +933,62 @@ console.log('Opponent tiles total:', initialState.board.opponentTilesTotal)
 console.log('First few tiles:', initialState.board.tiles[0].slice(0, 3))
 
 
-// Debug controls toggle with 'd' key
+// Debug controls and keyboard shortcuts
 document.addEventListener('keydown', (event) => {
-  if (event.key.toLowerCase() === 'd') {
+  const key = event.key.toLowerCase()
+  
+  // Toggle debug info panel with 'd'
+  if (key === 'd') {
     const debugControls = document.getElementById('debug-controls')
     if (debugControls) {
       const isVisible = debugControls.style.display !== 'none'
       debugControls.style.display = isVisible ? 'none' : 'block'
       console.log(`Debug controls ${isVisible ? 'hidden' : 'shown'}`)
     }
+  }
+  
+  // Debug shortcuts
+  if (key === 'g') {
+    // Gain +1 gold
+    const state = gameStore.getState()
+    gameStore.setState({ 
+      run: { 
+        ...state.run, 
+        gold: state.run.gold + 1 
+      } 
+    })
+    console.log('Debug: +1 gold')
+  }
+  
+  if (key === 'h') {
+    // Gain +10 health (not above max)
+    const state = gameStore.getState()
+    const newHp = Math.min(state.run.maxHp, state.run.hp + 10)
+    gameStore.setState({ 
+      run: { 
+        ...state.run, 
+        hp: newHp 
+      } 
+    })
+    console.log(`Debug: +${newHp - state.run.hp} health`)
+  }
+  
+  if (key === 'u') {
+    // Trigger upgrade choice
+    console.log('Debug: Triggering upgrade choice')
+    gameStore.triggerUpgradeChoice()
+  }
+  
+  if (key === 's') {
+    // Open shop
+    console.log('Debug: Opening shop')
+    gameStore.openShop()
+  }
+  
+  if (key === 'w') {
+    // Win board
+    console.log('Debug: Winning board')
+    gameStore.revealAllPlayerTiles()
   }
 })
 

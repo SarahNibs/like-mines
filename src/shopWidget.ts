@@ -29,10 +29,10 @@ export function updateShopWidget(
     
     // Set up horizontal layout for items
     shopItemsEl.style.display = 'flex'
-    shopItemsEl.style.flexWrap = 'wrap'
-    shopItemsEl.style.gap = '8px'
-    shopItemsEl.style.justifyContent = 'flex-start'
-    shopItemsEl.style.marginBottom = '8px'
+    shopItemsEl.style.flexDirection = 'row'
+    shopItemsEl.style.alignItems = 'flex-start'
+    shopItemsEl.style.gap = '4px'
+    shopItemsEl.style.marginBottom = '2px'
     
     // Create shop item buttons in horizontal layout
     state.shopItems.forEach((shopItem: any, index: number) => {
@@ -40,27 +40,28 @@ export function updateShopWidget(
       itemEl.style.display = 'flex'
       itemEl.style.flexDirection = 'column'
       itemEl.style.alignItems = 'center'
-      itemEl.style.padding = '4px'
+      itemEl.style.padding = '2px'
       itemEl.style.border = '1px solid #666'
-      itemEl.style.borderRadius = '4px'
+      itemEl.style.borderRadius = '2px'
       itemEl.style.background = '#444'
       itemEl.style.cursor = 'pointer'
-      itemEl.style.minWidth = '60px'
+      itemEl.style.minWidth = '24px'
       
       // Item icon (clickable)
       const itemIcon = document.createElement('div')
       itemIcon.textContent = shopItem.item.icon || '📦'
-      itemIcon.style.fontSize = '24px'
-      itemIcon.style.marginBottom = '2px'
-      itemIcon.style.cursor = 'pointer'
+      itemIcon.style.fontSize = '14px'
+      itemIcon.style.lineHeight = '1'
       itemIcon.title = `${shopItem.item.name}: ${shopItem.item.description}`
       
       // Gold cost
       const costLabel = document.createElement('div')
       costLabel.textContent = `${shopItem.cost}g`
-      costLabel.style.fontSize = '11px'
+      costLabel.style.fontSize = '8px'
       costLabel.style.color = '#ffa500'
       costLabel.style.fontWeight = 'bold'
+      costLabel.style.lineHeight = '1'
+      costLabel.style.marginTop = '1px'
       
       // Check if player can afford
       const canAfford = state.run.gold >= shopItem.cost
@@ -77,7 +78,6 @@ export function updateShopWidget(
         })
       } else {
         itemEl.style.opacity = '0.5'
-        itemEl.style.cursor = 'not-allowed'
         itemIcon.title = `${shopItem.item.name}: ${shopItem.item.description}\n\nNot enough gold (need ${shopItem.cost}g)`
         costLabel.style.color = '#ccc'
       }

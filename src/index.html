@@ -262,12 +262,16 @@
     </div>
     
     <!-- Debug controls -->
-    <div id="debug-controls" class="status" style="height: 140px; margin-left: 20px; display: none;">
+    <div id="debug-controls" class="status" style="margin-left: 20px; display: none;">
       <div class="status-content">
-        <button id="reveal-all-player" style="padding: 8px; margin: 4px; background: #4a7c59; color: white; border: none; border-radius: 4px; cursor: pointer;">Win Board</button>
-        <button id="reveal-all-opponent" style="padding: 8px; margin: 4px; background: #7c4a4a; color: white; border: none; border-radius: 4px; cursor: pointer;">Lose Board</button>
-        <button id="next-level" style="padding: 8px; margin: 4px; background: #ffa500; color: white; border: none; border-radius: 4px; cursor: pointer;">Next Level</button>
-        <button id="reset-game" style="padding: 8px; margin: 4px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Run</button>
+        <div style="color: #ffa500; font-weight: bold; margin-bottom: 4px;">🔧 Debug Controls</div>
+        <div style="font-size: 11px; line-height: 1.3;">
+          <div><strong>G</strong> - Gain +1 gold</div>
+          <div><strong>H</strong> - Gain +10 health</div>
+          <div><strong>U</strong> - Get upgrade choice</div>
+          <div><strong>S</strong> - Open shop</div>
+          <div><strong>W</strong> - Win board</div>
+        </div>
       </div>
     </div>
     
@@ -275,10 +279,10 @@
     <!-- Rewind widget removed -->
     
     <!-- Shop widget -->
-    <div id="shop-widget" class="status" style="height: 200px; display: none; margin-left: 20px;">
-      <div class="status-content" style="height: 100%; display: flex; flex-direction: column;">
-        <div id="shop-items" style="display: flex; flex-direction: column; gap: 4px; overflow-y: auto; flex: 1; min-height: 0;"></div>
-        <button id="shop-close" style="padding: 6px 12px; margin-top: 8px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; flex-shrink: 0;">Close</button>
+    <div id="shop-widget" class="status" style="display: none; margin-left: 20px;">
+      <div class="status-content" style="display: flex; flex-direction: column;">
+        <div id="shop-items"></div>
+        <button id="shop-close" style="padding: 6px 12px; margin-top: 4px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Close</button>
       </div>
     </div>
     
