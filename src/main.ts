@@ -12,6 +12,7 @@ import { updateShopWidget, updateDiscardWidget } from './shopWidget'
 import { updateHoverHighlights as updateHoverHighlightsModule } from './hoverHighlights'
 import { handleCanvasClick, handleCanvasRightClick } from './canvasEventHandlers'
 import { setupButtonHandlers } from './buttonHandlers'
+import { setupGlobalEventHandlers, setupStoreSubscription } from './globalEventHandlers'
 
 console.log('Emdash Delve - Starting up...')
 
@@ -722,37 +723,9 @@ canvas.addEventListener('mouseleave', () => {
 // Set up all button event handlers
 setupButtonHandlers(gameStore, clearUpgradeStateCache)
 
-// General click handler to clear highlights when clicking outside clue areas
-document.addEventListener('click', (event) => {
-  const target = event.target as Element
-  // Don't clear if clicking on clue tiles or the canvas (canvas has its own handler)
-  if (!target.closest('.clue-tile') && !target.closest('#game-board')) {
-    currentHoverTiles = null
-    persistentHoverTiles = null
-    renderer.clearAllHighlights()
-    render()
-  }
-})
-
-// Subscribe to store changes
-gameStore.subscribe(() => {
-  // Clear highlights when board changes (new level)
-  const state = gameStore.getState()
-  if (state.run.currentLevel !== (window as any).lastLevel) {
-    currentHoverTiles = null
-    persistentHoverTiles = null
-    renderer.clearAllHighlights()
-    ;(window as any).lastLevel = state.run.currentLevel
-  }
-  
-  // Force upgrade refresh on game status changes (like run reset)
-  if (state.gameStatus !== (window as any).lastGameStatus) {
-    clearUpgradeStateCache() // Clear upgrade cache to force refresh
-    ;(window as any).lastGameStatus = state.gameStatus
-  }
-  
-  render()
-})
+// Set up global event handlers and store subscription
+setupGlobalEventHandlers(gameStore, clearUpgradeStateCache, setHoverTiles, renderer, render)
+setupStoreSubscription(gameStore, clearUpgradeStateCache, setHoverTiles, renderer, render)
 
 // Initial render
 render()
@@ -766,63 +739,6 @@ console.log('Opponent tiles total:', initialState.board.opponentTilesTotal)
 console.log('First few tiles:', initialState.board.tiles[0].slice(0, 3))
 
 
-// Debug controls and keyboard shortcuts
-document.addEventListener('keydown', (event) => {
-  const key = event.key.toLowerCase()
-  
-  // Toggle debug info panel with 'd'
-  if (key === 'd') {
-    const debugControls = document.getElementById('debug-controls')
-    if (debugControls) {
-      const isVisible = debugControls.style.display !== 'none'
-      debugControls.style.display = isVisible ? 'none' : 'block'
-      console.log(`Debug controls ${isVisible ? 'hidden' : 'shown'}`)
-    }
-  }
-  
-  // Debug shortcuts
-  if (key === 'g') {
-    // Gain +1 gold
-    const state = gameStore.getState()
-    gameStore.setState({ 
-      run: { 
-        ...state.run, 
-        gold: state.run.gold + 1 
-      } 
-    })
-    console.log('Debug: +1 gold')
-  }
-  
-  if (key === 'h') {
-    // Gain +10 health (not above max)
-    const state = gameStore.getState()
-    const newHp = Math.min(state.run.maxHp, state.run.hp + 10)
-    gameStore.setState({ 
-      run: { 
-        ...state.run, 
-        hp: newHp 
-      } 
-    })
-    console.log(`Debug: +${newHp - state.run.hp} health`)
-  }
-  
-  if (key === 'u') {
-    // Trigger upgrade choice
-    console.log('Debug: Triggering upgrade choice')
-    gameStore.triggerUpgradeChoice()
-  }
-  
-  if (key === 's') {
-    // Open shop
-    console.log('Debug: Opening shop')
-    gameStore.openShop()
-  }
-  
-  if (key === 'w') {
-    // Win board
-    console.log('Debug: Winning board')
-    gameStore.revealAllPlayerTiles()
-  }
-})
+// Debug keyboard shortcuts are now handled in globalEventHandlers
 
 console.log('Game initialized - board rendered!')
