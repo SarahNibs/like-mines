@@ -9,7 +9,7 @@ import { highlightCluetilesForBoardTile, clearClueTileHighlights, getTileDisplay
 import { updateInventory } from './inventory'
 import { updateUpgrades, updateUpgradeChoiceWidget, clearUpgradeStateCache } from './upgradeDisplay'
 import { updateShopWidget, updateDiscardWidget } from './shopWidget'
-import { updateHoverHighlights as updateHoverHighlightsModule } from './hoverHighlights'
+import { updateHoverHighlights, setHoverTiles, getCurrentHoverTiles, getPersistentHoverTiles } from './hoverHighlights'
 import { handleCanvasClick, handleCanvasRightClick } from './canvasEventHandlers'
 import { setupButtonHandlers } from './buttonHandlers'
 import { setupGlobalEventHandlers, setupStoreSubscription } from './globalEventHandlers'
@@ -256,26 +256,17 @@ function updateUI() {
     console.log('Updating clues UI - hash changed')
     const cluesStatusContent = document.querySelector('#right-panel .status:last-child .status-content') as HTMLElement
     if (cluesStatusContent) {
-      updateCluesDisplay(state, cluesStatusContent, gameStore, renderer, setHoverTiles, updateHoverHighlights, render)
+      updateCluesDisplay(state, cluesStatusContent, gameStore, renderer, render)
     }
     window.lastCluesHash = currentCluesHash
   }
   
   // Always update hover highlights (independent of clue rebuilding)
-  updateHoverHighlights()
+  updateHoverHighlights(renderer)
 }
-
-// Hover state management
-let currentHoverTiles = null // {tiles: Tile[], extraTiles: Tile[]}
-let persistentHoverTiles = null // Same structure but dimmer
 
 // Clue scroll position preservation
 let savedClueScrollTop = 0
-
-// Update hover highlights on board
-function updateHoverHighlights() {
-  updateHoverHighlightsModule(currentHoverTiles, persistentHoverTiles, renderer)
-}
 
 
 
@@ -294,15 +285,10 @@ function render() {
   updateUI()
 }
 
-// Helper function to update hover state
-function setHoverTiles(current: any, persistent: any) {
-  currentHoverTiles = current
-  persistentHoverTiles = persistent
-}
 
 // Click handling
 canvas.addEventListener('click', (event) => {
-  handleCanvasClick(event, canvas, gameStore, renderer, currentHoverTiles, persistentHoverTiles, setHoverTiles, render)
+  handleCanvasClick(event, canvas, gameStore, renderer, render)
 })
 
 // Right-click handling for annotations and transmute cancel
@@ -419,8 +405,8 @@ canvas.addEventListener('mouseleave', () => {
 setupButtonHandlers(gameStore, clearUpgradeStateCache)
 
 // Set up global event handlers and store subscription
-setupGlobalEventHandlers(gameStore, clearUpgradeStateCache, setHoverTiles, renderer, render)
-setupStoreSubscription(gameStore, clearUpgradeStateCache, setHoverTiles, renderer, render)
+setupGlobalEventHandlers(gameStore, clearUpgradeStateCache, renderer, render)
+setupStoreSubscription(gameStore, clearUpgradeStateCache, renderer, render)
 
 // Initial render
 render()

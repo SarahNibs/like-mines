@@ -3,6 +3,7 @@
  */
 
 import { getTileDisplayColor } from './clueHighlighting'
+import { setHoverTiles, updateHoverHighlights } from './hoverHighlights'
 
 // Track scroll position to preserve it across updates
 let savedClueScrollTop = 0
@@ -13,8 +14,6 @@ export function updateClues(
   cluesStatusContent: HTMLElement,
   gameStore: any,
   renderer: any,
-  setHoverTiles: (current: any, persistent: any) => void,
-  updateHoverHighlights: () => void,
   renderFunction: () => void
 ) {
   if (!state.clues || state.clues.length === 0) {
@@ -53,7 +52,7 @@ export function updateClues(
       const boardTile = state.board.tiles[tile.y][tile.x]
       const tileEl = createClueTileElement(
         tile, tileIndex, clueIndex, 'A', boardTile, clue, 
-        gameStore, renderer, setHoverTiles, updateHoverHighlights, renderFunction
+        gameStore, renderer, renderFunction
       )
       handAGrid.appendChild(tileEl)
     })
@@ -72,7 +71,7 @@ export function updateClues(
       const boardTile = state.board.tiles[tile.y][tile.x]
       const tileEl = createClueTileElement(
         tile, tileIndex, clueIndex, 'B', boardTile, clue, 
-        gameStore, renderer, setHoverTiles, updateHoverHighlights, renderFunction
+        gameStore, renderer, renderFunction
       )
       handBGrid.appendChild(tileEl)
     })
@@ -109,8 +108,6 @@ function createClueTileElement(
   clue: any,
   gameStore: any,
   renderer: any,
-  setHoverTiles: (current: any, persistent: any) => void,
-  updateHoverHighlights: () => void,
   renderFunction: () => void
 ): HTMLElement {
   const tileEl = document.createElement('div')
@@ -171,7 +168,7 @@ function createClueTileElement(
     console.log(`Mouse enter Hand ${hand} tile`, tile.x, tile.y)
     setHoverTiles({ tiles: handTiles, extraTiles: [tile] }, null)
     renderer.clearAllHighlights() // Clear any renderer persistent highlights 
-    updateHoverHighlights() // Update highlights immediately
+    updateHoverHighlights(renderer) // Update highlights immediately
     renderFunction()
   })
   
@@ -180,7 +177,7 @@ function createClueTileElement(
     // Move current hover to persistent, then clear current
     const currentHoverTiles = { tiles: handTiles, extraTiles: [tile] }
     setHoverTiles(null, { ...currentHoverTiles })
-    updateHoverHighlights() // Update highlights immediately
+    updateHoverHighlights(renderer) // Update highlights immediately
     renderFunction()
   })
   

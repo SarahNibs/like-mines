@@ -6,6 +6,7 @@
 import { isMouseOverDetectorScan, isMouseOverChainIndicator, isMouseOverTileContent } from './tileHover'
 import { showDetectorTooltip, hideDetectorTooltip, showItemTooltip, hideItemTooltip } from './tooltips'
 import { highlightCluetilesForBoardTile, clearClueTileHighlights } from './clueHighlighting'
+import { setHoverTiles, getCurrentHoverTiles, getPersistentHoverTiles } from './hoverHighlights'
 
 // Handle canvas click events (left click)
 export function handleCanvasClick(
@@ -13,9 +14,6 @@ export function handleCanvasClick(
   canvas: HTMLCanvasElement,
   gameStore: any,
   renderer: any,
-  currentHoverTiles: any,
-  persistentHoverTiles: any,
-  setHoverTiles: (current: any, persistent: any) => void,
   renderFunction: () => void
 ) {
   const rect = canvas.getBoundingClientRect()

@@ -1,0 +1,310 @@
+# LIKE-MINES: ARCHITECTURAL REVIEW & FUTURE ROADMAP
+# Senior Developer Handoff Document
+# Generated: 2025-08-14
+
+## PROJECT STATUS & CONTEXT
+
+**Current State**: The codebase has undergone successful incremental refactoring from a 1200+ line main.ts monolith to a modular architecture. The game is functional with working character selection, board mechanics, shop system, upgrade progression, and AI opponent.
+
+**Total Codebase**: ~6,300 lines across 25 TypeScript modules
+**Architecture Pattern**: Event-driven with centralized store, Canvas-based rendering
+**Build System**: Vite + TypeScript, minimal dependencies (rot-js for procedural generation)
+
+---
+
+## ARCHITECTURAL STRENGTHS
+
+### ✅ What's Working Well
+
+1. **Clean Separation of Concerns** - Recent refactoring successfully extracted:
+   - Event handling (global, canvas, button handlers)
+   - UI widgets (clues, shop, inventory, upgrades)
+   - Game logic separation from presentation
+   - Hover state management centralization
+
+2. **Type Safety** - Comprehensive TypeScript types in types.ts covering all game entities
+3. **Modular Structure** - Each file has single responsibility, easy to reason about
+4. **Canvas Rendering** - Custom renderer handles complex game state visualization efficiently
+5. **Store Pattern** - Centralized state management with observer pattern for UI reactivity
+
+---
+
+## CRITICAL ARCHITECTURAL DEBT
+
+### 🚨 High-Priority Issues
+
+#### 1. **MONOLITHIC STORE** (store.ts - 1,510 lines)
+**Problem**: The store.ts file is now the largest in the codebase and handles everything from game logic to UI state to AI coordination. It violates single responsibility principle.
+
+**Impact**: 
+- Difficult to test individual game mechanics
+- Tight coupling between unrelated systems
+- Performance issues (entire UI re-renders on any state change)
+- Maintenance nightmare as game complexity grows
+
+**Recommended Solution**: 
+```
+Store Decomposition Strategy:
+├── GameState (core game rules, board state)
+├── UIState (hover, selections, modals)  
+├── PlayerState (inventory, stats, upgrades)
+├── MatchState (turn management, AI coordination)
+└── MetaState (character selection, run progression)
+```
+
+#### 2. **RENDER-HEAVY ARCHITECTURE**
+**Problem**: Every state change triggers full UI rebuild via render() cascade.
+
+**Impact**: Performance degradation, unnecessary DOM manipulation, poor UX on lower-end devices.
+
+**Solution**: Implement granular reactivity - components only update when their specific data changes.
+
+#### 3. **TESTING VOID**
+**Problem**: Zero test coverage. No unit tests, integration tests, or architectural testing patterns.
+
+**Impact**: Refactoring is risky, bugs are discovered in production, hard to verify game balance changes.
+
+**Solution**: Implement testing pyramid:
+- Unit tests for game logic (pure functions)
+- Integration tests for store/renderer interactions  
+- End-to-end tests for core player flows
+
+---
+
+## STRUCTURAL IMPROVEMENTS
+
+### 🔧 Medium-Priority Refactoring
+
+#### 1. **Event System Overhaul**
+Current ad-hoc event handling should become a formal event bus:
+```typescript
+// Instead of: renderer.clearAllHighlights(); updateUI(); render()
+// Do: eventBus.emit('highlights:clear', { tiles: [...] })
+```
+
+**Benefits**: Decoupling, easier debugging, plugin architecture potential
+
+#### 2. **Component Architecture**
+Extract UI widgets into proper components with lifecycle:
+```
+src/components/
+├── CluesPanel/
+├── InventoryPanel/
+├── ShopModal/
+└── GameBoard/
+```
+
+**Benefits**: Reusability, isolated testing, cleaner prop interfaces
+
+#### 3. **Game Logic Extraction**
+Move pure game mechanics out of store into dedicated services:
+- `CombatSystem` - Monster fighting, damage calculation
+- `BoardValidator` - Win/loss conditions, rule validation
+- `UpgradeSystem` - Effect application and stacking
+- `ClueGenerator` - Probabilistic hint generation
+
+#### 4. **Data Layer Abstraction**
+Create explicit data access patterns:
+```typescript
+interface GameRepository {
+  saveGame(state: GameState): void
+  loadGame(): GameState | null
+  getCharacterData(id: string): Character
+}
+```
+
+**Benefits**: Future persistence, save/load functionality, data migration strategies
+
+---
+
+## PERFORMANCE CONSIDERATIONS
+
+### 🚀 Optimization Opportunities
+
+#### 1. **Canvas Rendering Pipeline**
+Current renderer redraws entire board on every change. Consider:
+- Dirty rectangle tracking
+- Layer-based rendering (static board, dynamic overlays)
+- RequestAnimationFrame batching
+- Sprite caching for repeated icons
+
+#### 2. **State Mutation Patterns**
+Heavy object cloning in store operations. Consider:
+- Immutable data structures (Immer.js integration)
+- Selective state updates
+- Memoization for expensive calculations
+
+#### 3. **DOM Manipulation**
+Clue panels rebuild entire DOM tree on updates. Consider:
+- Virtual DOM or DOM diffing
+- Event delegation instead of per-element listeners
+- CSS-driven state transitions
+
+---
+
+## SCALABILITY ARCHITECTURE
+
+### 📈 Future Growth Patterns
+
+#### 1. **Plugin Architecture**
+Design for extensibility:
+```typescript
+interface GamePlugin {
+  name: string
+  initialize(context: GameContext): void
+  onTileReveal?(tile: Tile): void
+  onCombat?(monster: Monster, player: Player): void
+}
+```
+
+**Enables**: Community content, A/B testing, modular features
+
+#### 2. **Serialization Strategy**
+Prepare for save/load, replay, networking:
+- All game state must be serializable JSON
+- Separate derived state from core state
+- Command pattern for undoable actions
+- Deterministic RNG with seeds
+
+#### 3. **Multi-Board Architecture**
+Current single-board model limits game modes:
+```typescript
+interface Campaign {
+  boards: BoardConfig[]
+  meta: CampaignMeta
+  progression: ProgressionRules
+}
+```
+
+**Enables**: Story campaigns, daily challenges, tournament modes
+
+---
+
+## TECHNICAL DEBT PRIORITIES
+
+### 🎯 Recommended Order of Operations
+
+#### Phase 1: Foundation (2-3 weeks)
+1. Add comprehensive TypeScript strict mode
+2. Implement basic unit test framework
+3. Extract pure functions from store
+4. Add error boundaries and logging
+
+#### Phase 2: Architecture (4-6 weeks)  
+1. Decompose monolithic store
+2. Implement event bus pattern
+3. Create component lifecycle system
+4. Add performance monitoring
+
+#### Phase 3: Features (ongoing)
+1. Save/load system
+2. Replay functionality  
+3. Plugin architecture
+4. Advanced game modes
+
+---
+
+## DATA STRUCTURE CONCERNS
+
+### 🗂️ Type System Evolution
+
+#### Current Issues:
+- `any` types used in event handlers (type safety erosion)
+- Tile system overloaded (owner + content + state + UI concerns)
+- Store state deeply nested (performance implications)
+
+#### Recommended Changes:
+
+```typescript
+// Current: Monolithic tile with mixed concerns
+interface Tile {
+  // Core game data
+  x: number, y: number, owner: TileOwner, content: TileContent
+  // UI state (should be separate)
+  annotated: string, highlighted: boolean
+  // Derived state (should be computed)
+  revealed: boolean, contentVisible: boolean
+}
+
+// Better: Separate concerns
+interface CoreTile {
+  position: Position
+  owner: TileOwner  
+  content: TileContent
+  revealed: boolean
+}
+
+interface TileUIState {
+  annotation: Annotation
+  highlight: HighlightType | null
+}
+
+interface TileMetadata {
+  detectorScan?: ScanResult
+  chainData?: ChainConstraint
+}
+```
+
+---
+
+## GAME DESIGN CONSTRAINTS
+
+### 🎮 Architecture Impact on Gameplay
+
+#### Current Limitations:
+1. **AI System**: Single DumbAI class limits strategic depth
+2. **Board Generation**: Procedural but not parameterizable for different game modes
+3. **Progression**: Linear difficulty scaling, no branching paths
+4. **Balance**: No analytics or telemetry for data-driven tuning
+
+#### Architectural Solutions:
+1. **AI Framework**: Strategy pattern with difficulty scaling, behavior trees
+2. **Level Design**: Template system with parameters, community content support
+3. **Progression Trees**: Graph-based advancement, multiple victory conditions  
+4. **Analytics Layer**: Event tracking, balance metrics, A/B testing hooks
+
+---
+
+## IMMEDIATE ACTION ITEMS
+
+### 🎯 Next Developer Should:
+
+1. **Set up testing**: Jest + Testing Library, aim for 70%+ coverage of game logic
+2. **Performance audit**: Bundle analysis, runtime profiling, identify bottlenecks
+3. **Store refactoring**: Extract one subdomain at a time (start with UIState)
+4. **Type safety**: Eliminate `any` types, add strict TypeScript config
+5. **Error handling**: Add comprehensive error boundaries and user feedback
+
+### 📊 Success Metrics:
+
+- **Performance**: <100ms state update cycles, <16ms render frames
+- **Maintainability**: <500 lines per file, >80% type coverage  
+- **Testing**: >70% unit test coverage, E2E test suite
+- **Bundle**: <500KB compressed bundle size
+
+---
+
+## PHILOSOPHICAL NOTES
+
+### 🧭 Architectural Philosophy
+
+This codebase successfully demonstrates **evolutionary architecture** - starting with a working monolith and gradually extracting modules while maintaining functionality. This approach reduced risk and allowed for learning the domain before making structural decisions.
+
+The current state is a **good foundation** for the next phase of growth. The hardest problems (game mechanics, rendering, user interaction) are solved. What remains is primarily engineering discipline: testing, performance, and maintainability.
+
+**Resist the urge to rewrite from scratch.** The existing code works, has been battle-tested through refactoring, and encodes significant domain knowledge. Evolution over revolution.
+
+### 🚀 Vision for the Future
+
+This architecture can support:
+- **Multiplayer**: Event-driven design translates well to networked games
+- **Mobile**: Canvas rendering and touch events are mobile-ready
+- **Modding**: Plugin architecture enables community content
+- **Analytics**: Event system provides telemetry hooks
+- **Accessibility**: Component architecture enables screen reader support
+
+The technical foundation exists. What's needed now is **systematic improvement** rather than dramatic restructuring.
+
+---
+
+*End of Review - Happy Coding! 🎮*

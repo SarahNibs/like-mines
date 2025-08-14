@@ -2,11 +2,12 @@
  * Global document-level event handlers
  */
 
+import { setHoverTiles, updateHoverHighlights } from './hoverHighlights'
+
 // Set up global document event handlers
 export function setupGlobalEventHandlers(
   gameStore: any,
   clearUpgradeStateCache: () => void,
-  setHoverTiles: (current: any, persistent: any) => void,
   renderer: any,
   renderFunction: () => void
 ) {
@@ -85,7 +86,6 @@ export function setupGlobalEventHandlers(
 export function setupStoreSubscription(
   gameStore: any,
   clearUpgradeStateCache: () => void,
-  setHoverTiles: (current: any, persistent: any) => void,
   renderer: any,
   renderFunction: () => void
 ) {
