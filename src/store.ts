@@ -2,57 +2,64 @@ import { GameState, getTileAt, TileContent } from './types'
 import { createInitialGameState, createCharacterRunState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect } from './gameLogic'
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
+import { StateManager } from './StateManager'
+import { AIManager } from './AIManager'
+import { GameFlowManager } from './GameFlowManager'
+import { UIStateManager } from './UIStateManager'
+import { ShopManager } from './ShopManager'
+import { TileContentHandler, TileContentContext } from './TileContentHandler'
+import { TrophyManager } from './TrophyManager'
+import { InventoryManager } from './InventoryManager'
 
-// Simple vanilla TypeScript store with observers
+// Game store using extracted manager components
 class GameStore {
-  private state: GameState
-  private observers: Array<() => void> = []
-  private ai: AIOpponent
-  private aiTurnTimeout: number | null = null
+  private stateManager: StateManager<GameState>
+  private aiManager: AIManager
+  private gameFlowManager: GameFlowManager
+  private uiStateManager: UIStateManager
+  private shopManager: ShopManager
+  private tileContentHandler: TileContentHandler
+  private trophyManager: TrophyManager
+  private inventoryManager: InventoryManager
   private pendingUpgradeChoice: boolean = false
 
   constructor() {
-    this.state = createInitialGameState()
-    this.state.gameStatus = 'character-select' // Start in character selection
-    this.ai = new DumbAI()
+    const initialState = createInitialGameState()
+    initialState.gameStatus = 'character-select' // Start in character selection
+    
+    this.stateManager = new StateManager(initialState)
+    this.aiManager = new AIManager(new DumbAI())
+    this.gameFlowManager = new GameFlowManager()
+    this.uiStateManager = new UIStateManager()
+    this.shopManager = new ShopManager()
+    this.tileContentHandler = new TileContentHandler()
+    this.trophyManager = new TrophyManager()
+    this.inventoryManager = new InventoryManager()
   }
 
   // Get current state
   getState(): GameState {
-    return this.state
+    return this.stateManager.getState()
   }
 
   // Subscribe to state changes
   subscribe(callback: () => void): () => void {
-    this.observers.push(callback)
-    
-    // Return unsubscribe function
-    return () => {
-      const index = this.observers.indexOf(callback)
-      if (index > -1) {
-        this.observers.splice(index, 1)
-      }
-    }
+    return this.stateManager.subscribe(callback)
   }
 
-  // Notify all observers of state changes
-  private notify(): void {
-    this.observers.forEach(callback => callback())
-  }
-
-  // Update state and notify observers
+  // Update state using state manager
   private setState(newState: Partial<GameState>): void {
-    this.state = { ...this.state, ...newState }
-    this.notify()
+    this.stateManager.updateState(newState)
   }
 
   // Actions
   revealTileAt(x: number, y: number, bypassRewind: boolean = false): boolean {
-    if (this.state.gameStatus !== 'playing' || this.state.currentTurn !== 'player') {
+    const state = this.getState()
+    if (state.gameStatus !== 'playing' || state.currentTurn !== 'player') {
       return false
     }
     
-    const tile = getTileAt(this.state.board, x, y)
+    const tile = getTileAt(state.board, x, y)
     if (!tile || tile.revealed) {
       return false
     }
@@ -69,14 +76,14 @@ class GameStore {
     // Check for Rewind protection on dangerous tiles (unless bypassed with SHIFT)
     // BUT first check if Protection would handle this - if so, don't trigger Rewind
     const wouldProtectionActivate = tile.owner !== 'player' && 
-                                   this.state.run.temporaryBuffs.protection && 
-                                   this.state.run.temporaryBuffs.protection > 0
+                                   state.run.temporaryBuffs.protection && 
+                                   state.run.temporaryBuffs.protection > 0
     
     // Rewind logic removed
     
-    const success = revealTile(this.state.board, x, y, 'player')
+    const success = revealTile(state.board, x, y, 'player')
     if (success) {
-      const newBoardStatus = checkBoardStatus(this.state.board)
+      const newBoardStatus = checkBoardStatus(state.board)
       const isPlayerTile = tile.owner === 'player'
       
       // Award trophies when board is won
@@ -86,15 +93,15 @@ class GameStore {
       
       // Award loot bonus for revealing opponent tiles
       if (tile.owner === 'opponent') {
-        this.state.run.gold += this.state.run.loot
+        state.run.gold += state.run.loot
       }
       
       // RESTING upgrade: heal when revealing neutral tiles
       if (tile.owner === 'neutral') {
-        const restingCount = this.state.run.upgrades.filter(id => id === 'resting').length
+        const restingCount = state.run.upgrades.filter(id => id === 'resting').length
         if (restingCount > 0) {
           const healAmount = restingCount * 3
-          this.state.run.hp = Math.min(this.state.run.maxHp, this.state.run.hp + healAmount)
+          state.run.hp = Math.min(state.run.maxHp, state.run.hp + healAmount)
           console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
         }
       }
@@ -103,17 +110,18 @@ class GameStore {
       this.handleTileContent(tile)
       
       // Check if player died after handling content
-      if (this.state.gameStatus === 'player-died') {
+      const updatedState = this.getState() // Get fresh state after handling content
+      if (updatedState.gameStatus === 'player-died') {
         return // Exit early if player died
       }
       
       // Check if Protection should activate before consuming it
-      const hadProtection = this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0
+      const hadProtection = state.run.temporaryBuffs.protection && state.run.temporaryBuffs.protection > 0
       
       // Consume Protection charge on ANY tile reveal (if active)
       if (hadProtection) {
-        this.state.run.temporaryBuffs.protection -= 1
-        console.log(`Protection consumed! ${this.state.run.temporaryBuffs.protection} charges remaining.`)
+        state.run.temporaryBuffs.protection -= 1
+        console.log(`Protection consumed! ${state.run.temporaryBuffs.protection} charges remaining.`)
       }
       
       // Player continues turn if they revealed their own tile, or if protection was active
@@ -124,7 +132,7 @@ class GameStore {
       }
       
       this.setState({
-        board: { ...this.state.board },
+        board: { ...state.board },
         boardStatus: newBoardStatus,
         currentTurn: newTurn
       })
@@ -136,7 +144,8 @@ class GameStore {
         this.handleBoardLost()
       } else if (newTurn === 'opponent') {
         // Only trigger AI turn if no upgrade choice is pending
-        if (!this.state.upgradeChoice && !this.pendingUpgradeChoice) {
+        const currentState = this.getState()
+        if (!currentState.upgradeChoice && !this.pendingUpgradeChoice) {
           this.scheduleAITurn()
         }
       }
@@ -148,47 +157,43 @@ class GameStore {
 
   // Schedule AI turn with delay for better UX
   private scheduleAITurn(): void {
-    if (this.aiTurnTimeout) {
-      clearTimeout(this.aiTurnTimeout)
-    }
-    
-    this.aiTurnTimeout = window.setTimeout(() => {
-      this.executeAITurn()
-    }, 1000) // 1 second delay
+    this.aiManager.scheduleTurn(this.getState().board, (move) => {
+      if (move) {
+        this.executeAIMove(move)
+      }
+    })
   }
 
-  // Execute AI turn
-  private executeAITurn(): void {
-    if (this.state.gameStatus !== 'playing' || this.state.currentTurn !== 'opponent') {
+  // Execute AI move
+  private executeAIMove(move: { x: number; y: number }): void {
+    const state = this.getState()
+    if (state.gameStatus !== 'playing' || state.currentTurn !== 'opponent') {
       return
     }
     
-    const aiMove = this.ai.takeTurn(this.state.board)
-    if (aiMove) {
-      console.log(`AI reveals tile at (${aiMove.x}, ${aiMove.y})`)
-      const success = revealTile(this.state.board, aiMove.x, aiMove.y, 'opponent')
+    console.log(`AI reveals tile at (${move.x}, ${move.y})`)
+    const success = revealTile(state.board, move.x, move.y, 'opponent')
+    
+    if (success) {
+      const newBoardStatus = checkBoardStatus(state.board)
       
-      if (success) {
-        const newBoardStatus = checkBoardStatus(this.state.board)
-        
-        // Generate new clue when switching to player turn and add to array
-        const newClues = newBoardStatus === 'in-progress' ? 
-          [...this.state.clues, generateClue(this.state.board, this.state.run.upgrades)] : this.state.clues
-        
-        this.setState({
-          board: { ...this.state.board },
-          boardStatus: newBoardStatus,
-          clues: newClues,
-          // Switch back to player turn (if board still in progress)
-          currentTurn: newBoardStatus === 'in-progress' ? 'player' : 'opponent'
-        })
-        
-        // Handle board completion
-        if (newBoardStatus === 'won') {
-          this.handleBoardWon()
-        } else if (newBoardStatus === 'lost') {
-          this.handleBoardLost()
-        }
+      // Generate new clue when switching to player turn and add to array
+      const newClues = newBoardStatus === 'in-progress' ? 
+        [...state.clues, generateClue(state.board, state.run.upgrades)] : state.clues
+      
+      this.setState({
+        board: { ...state.board },
+        boardStatus: newBoardStatus,
+        clues: newClues,
+        // Switch back to player turn (if board still in progress)
+        currentTurn: newBoardStatus === 'in-progress' ? 'player' : 'opponent'
+      })
+      
+      // Handle board completion
+      if (newBoardStatus === 'won') {
+        this.handleBoardWon()
+      } else if (newBoardStatus === 'lost') {
+        this.handleBoardLost()
       }
     }
   }
@@ -269,89 +274,37 @@ class GameStore {
     return true
   }
 
-  // Handle tile content when revealed
+  // Handle tile content when revealed using TileContentHandler
   private handleTileContent(tile: any): void {
-    const run = this.state.run
+    const state = this.getState()
+    const context: TileContentContext = {
+      run: state.run,
+      stealGoldTrophy: (monsterName: string) => this.stealGoldTrophy(monsterName),
+      applyRichUpgrade: (x: number, y: number) => this.applyRichUpgrade(x, y)
+    }
     
-    if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
-      // Show upgrade choice widget instead of applying immediately
+    const result = this.tileContentHandler.handleTileContent(tile, context)
+    
+    if (result.message) {
+      console.log(result.message)
+    }
+    
+    if (result.shouldTriggerUpgradeChoice) {
       this.triggerUpgradeChoice()
-      console.log(`Found upgrade! Choose your enhancement.`)
-      // Set a flag to prevent AI turn until upgrade is chosen
       this.pendingUpgradeChoice = true
-    } else if (tile.content === TileContent.Item && tile.itemData) {
-      const item = tile.itemData
-      
-      if (item.immediate) {
-        // Apply immediate effect
-        const message = applyItemEffect(run, item)
-        console.log(message) // For now, just log - we'll add a message system later
-        
-        // Check for game over after immediate effects (like bear trap)
-        if (run.hp <= 0) {
-          console.log('Player died! Game over.')
-          this.setState({ gameStatus: 'player-died' })
-          return
-        }
-        
-        // Handle shop opening
-        if (item.id === 'shop') {
-          this.openShop()
-        }
-      } else {
-        // Try to add to inventory
-        const success = addItemToInventory(run, item)
-        if (!success) {
-          // Inventory full - check if this is an item that can be auto-applied
-          if (item.id === 'ward') {
-            // Apply ward effect immediately
-            run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 4
-            if (!run.upgrades.includes('ward-temp')) {
-              run.upgrades.push('ward-temp') // Add to upgrades list for display
-            }
-            console.log(`Inventory full! Ward auto-applied: +4 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
-          } else if (item.id === 'blaze') {
-            // Apply blaze effect immediately
-            run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
-            if (!run.upgrades.includes('blaze-temp')) {
-              run.upgrades.push('blaze-temp') // Add to upgrades list for display
-            }
-            console.log(`Inventory full! Blaze auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`)
-          } else {
-            console.log(`Inventory full! ${item.name} was lost.`)
-          }
-        }
-      }
-    } else if (tile.content === TileContent.Monster && tile.monsterData) {
-      const monster = tile.monsterData
-      const damage = fightMonster(monster, run)
-      const newHp = run.hp - damage
-      
-      // Check if player would die from this damage
-      if (newHp <= 0) {
-        // Try to steal a gold trophy to prevent death
-        if (this.stealGoldTrophy(monster.name)) {
-          run.hp = 1 // Survive with 1 HP instead of taking full damage
-          console.log(`${monster.name} stole a gold trophy! You survive with 1 HP.`)
-          // No loot or Rich upgrade when saved by trophy theft
-        } else {
-          run.hp = newHp // Apply the lethal damage
-          console.log('Player died! Game over.')
-          this.setState({ gameStatus: 'player-died' })
-          return
-        }
-      } else {
-        // Apply damage normally and award loot
-        run.hp = newHp
-        run.gold += run.loot
-        
-        // RICH upgrade: add gold items to adjacent tiles when defeating monsters
-        if (run.upgrades.includes('rich')) {
-          this.applyRichUpgrade(tile.x, tile.y).catch(console.error)
-        }
-        
-        console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${run.loot} gold. HP: ${run.hp}/${run.maxHp}`)
-      }
+    }
+    
+    if (result.shouldOpenShop) {
+      this.openShop()
+    }
+    
+    if (result.shouldDie) {
+      this.setState({ gameStatus: 'player-died' })
+      return
+    }
+    
+    if (result.shouldUpdateRunState) {
+      this.setState({ run: { ...state.run } })
     }
   }
 
@@ -604,10 +557,8 @@ class GameStore {
   // Cancel transmute mode
   cancelTransmute(): void {
     console.log('Transmute cancelled.')
-    this.setState({
-      transmuteMode: false,
-      transmuteItemIndex: undefined
-    })
+    const result = this.uiStateManager.cancelToolMode('transmute')
+    this.setState(result.newUIState)
   }
 
   // Start detector mode
@@ -918,127 +869,76 @@ class GameStore {
 
   // Shop functionality
   openShop(): void {
-    // Generate items and upgrades with costs scaling by level and Traders bonus
-    import('./items').then(({ SHOP_ITEMS }) => {
-      import('./upgrades').then(({ getAvailableUpgrades }) => {
-        // Base costs based on shop number (shops appear on levels 3, 6, 9, 12, 15, 18)
-        const level = this.state.run.currentLevel
-        const shopNumber = Math.floor(level / 3) // 1st shop (level 3) = 1, 2nd shop (level 6) = 2, etc.
-        
-        // Count Traders upgrades for additional items
-        const tradersCount = this.state.run.upgrades.filter(id => id === 'traders').length
-        const baseItemCount = 5
-        const totalItemCount = baseItemCount + tradersCount
-        
-        // Generate item costs: Level 3: 2,3,4,5 / Level 6: 3,4,5,6 / Level 9: 4,5,6,7 etc.
-        const baseItemCost = 1 + shopNumber // Level 3 = shop 1, base cost 2. Level 6 = shop 2, base cost 3.
-        const itemCosts = []
-        for (let i = 0; i < totalItemCount; i++) {
-          const extraCost = i >= baseItemCount ? i - baseItemCount + 1 : 0 // Traders extra items cost +1 more
-          itemCosts.push(baseItemCost + i + extraCost)
-        }
-        
-        // Generate upgrade costs: Level 3: 7 / Level 6: 8 / Level 9: 9 etc.
-        const baseUpgradeCost = 6 + shopNumber // Level 3 = shop 1, upgrade cost 7. Level 6 = shop 2, upgrade cost 8.
-        const totalUpgradeCount = 1 + tradersCount
-        const upgradeCosts = []
-        for (let i = 0; i < totalUpgradeCount; i++) {
-          upgradeCosts.push(baseUpgradeCost + (i > 0 ? i : 0))
-        }
-        
-        const shopItems = []
-        
-        // Add random items
-        for (let i = 0; i < totalItemCount; i++) {
-          const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
-          shopItems.push({
-            item: randomItem,
-            cost: itemCosts[i],
-            isUpgrade: false
-          })
-        }
-        
-        // Add random upgrades
-        const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
-        for (let i = 0; i < totalUpgradeCount && i < availableUpgrades.length; i++) {
-          const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
-          shopItems.push({
-            item: randomUpgrade,
-            cost: upgradeCosts[i],
-            isUpgrade: true
-          })
-        }
-        
-        console.log('Shop opened with items:', shopItems)
-        this.setState({
-          shopOpen: true,
-          shopItems
-        })
+    const state = this.getState()
+    const level = state.run.currentLevel
+    const tradersCount = state.run.upgrades.filter(id => id === 'traders').length
+    
+    this.shopManager.openShop({
+      level,
+      tradersCount
+    }).then(items => {
+      this.uiStateManager.openShop()
+      this.setState({
+        shopOpen: true,
+        shopItems: items
       })
     })
   }
 
   // Buy item from shop
   buyShopItem(index: number): boolean {
-    if (!this.state.shopOpen || index >= this.state.shopItems.length) {
+    const state = this.getState()
+    
+    // Check if we can purchase
+    const canPurchase = this.shopManager.canPurchaseItem(index, state.run.gold)
+    if (!canPurchase.canPurchase) {
+      console.log(canPurchase.reason)
       return false
     }
     
-    const shopItem = this.state.shopItems[index]
-    const run = this.state.run
-    
-    // Check if player has enough gold
-    if (run.gold < shopItem.cost) {
-      console.log(`Not enough gold! Need ${shopItem.cost}, have ${run.gold}`)
+    // Execute purchase
+    const result = this.shopManager.purchaseItem(index)
+    if (!result.success) {
+      console.log(result.reason)
       return false
     }
     
-    // Deduct gold
-    run.gold -= shopItem.cost
+    // Deduct gold from current state
+    const updatedRun = { ...state.run }
+    updatedRun.gold -= result.goldSpent!
     
     // Handle upgrades vs items
-    if (shopItem.isUpgrade) {
+    if (result.isUpgrade) {
       // Apply upgrade immediately - this will handle its own setState
-      this.applyUpgrade(shopItem.item.id)
-      console.log(`Bought and applied ${shopItem.item.name} upgrade for ${shopItem.cost} gold`)
+      this.applyUpgrade(result.itemPurchased!.id)
+      console.log(`Bought and applied ${result.itemPurchased!.name} upgrade for ${result.goldSpent} gold`)
       
-      // Remove the bought item from shop and update state with current run from state (which was updated by applyUpgrade)
-      const newShopItems = [...this.state.shopItems]
-      newShopItems.splice(index, 1)
-      
+      // Update shop items from shop manager
       this.setState({ 
-        run: { ...this.state.run }, // Use the updated run from state
-        shopItems: newShopItems
+        run: { ...this.getState().run }, // Use the updated run from state after applyUpgrade
+        shopItems: this.shopManager.getShopItems()
       })
-    } else if (shopItem.item.immediate) {
+    } else if (result.itemPurchased!.immediate) {
       // Use immediate item right away
-      const message = applyItemEffect(run, shopItem.item)
-      console.log(`Bought and used ${shopItem.item.name} for ${shopItem.cost} gold: ${message}`)
-      
-      // Remove the bought item from shop
-      const newShopItems = [...this.state.shopItems]
-      newShopItems.splice(index, 1)
+      const message = applyItemEffect(updatedRun, result.itemPurchased!)
+      console.log(`Bought and used ${result.itemPurchased!.name} for ${result.goldSpent} gold: ${message}`)
       
       this.setState({ 
-        run: { ...run },
-        shopItems: newShopItems
+        run: { ...updatedRun },
+        shopItems: this.shopManager.getShopItems()
       })
     } else {
       // Try to add item to inventory
-      const success = addItemToInventory(run, shopItem.item)
+      const success = addItemToInventory(updatedRun, result.itemPurchased!)
       if (!success) {
-        console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`)
+        console.log(`Bought ${result.itemPurchased!.name} for ${result.goldSpent} gold but inventory full - item lost!`)
       } else {
-        console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold`)
+        console.log(`Bought ${result.itemPurchased!.name} for ${result.goldSpent} gold`)
       }
       
-      // Remove the bought item from shop
-      const newShopItems = [...this.state.shopItems]
-      newShopItems.splice(index, 1)
-      
       this.setState({ 
-        run: { ...run },
-        shopItems: newShopItems
+        run: { ...updatedRun },
+        shopItems: this.shopManager.getShopItems()
       })
     }
     return true
@@ -1046,17 +946,25 @@ class GameStore {
 
   // Close shop
   closeShop(): void {
-    const wasBoardWon = this.state.boardStatus === 'won'
+    const state = this.getState()
+    const wasBoardWon = state.boardStatus === 'won'
+    
+    // Use managers to close shop
+    this.shopManager.closeShop()
+    this.uiStateManager.closeShop()
     
     this.setState({
       shopOpen: false,
       shopItems: []
     })
     
-    // If board was won while shop was open, trigger progression now
+    // Use GameFlowManager to handle shop closed after win
     if (wasBoardWon) {
-      console.log('Shop closed and board was won - triggering progression')
-      this.handleBoardWon()
+      const result = this.gameFlowManager.handleShopClosedAfterWin(state)
+      if (result.newState && Object.keys(result.newState).length > 0) {
+        console.log('Shop closed and board was won - triggering progression')
+        this.handleBoardWon()
+      }
     }
   }
 
@@ -1245,9 +1153,18 @@ class GameStore {
 
   // Select character and start game
   selectCharacter(characterId: string): void {
-    if (this.state.gameStatus !== 'character-select') {
+    const state = this.getState()
+    if (state.gameStatus !== 'character-select') {
       return
     }
+    
+    const result = this.gameFlowManager.selectCharacter(state, characterId)
+    if (result.newState && Object.keys(result.newState).length > 0) {
+      this.continueCharacterSelection(characterId, result.newState)
+    }
+  }
+  
+  private continueCharacterSelection(characterId: string, gameFlowState: any): void {
     
     // Create character-specific run state
     const characterRun = createCharacterRunState(characterId)
@@ -1333,18 +1250,15 @@ class GameStore {
   }
 
   resetGame(): void {
-    // Clear any pending AI turn
-    if (this.aiTurnTimeout) {
-      clearTimeout(this.aiTurnTimeout)
-      this.aiTurnTimeout = null
-    }
+    // Use GameFlowManager to reset game
+    const result = this.gameFlowManager.resetGame()
     
-    // Reset AI for new game
-    this.ai.resetForNewBoard()
+    // Reset managers
+    this.aiManager.cleanup()
+    this.uiStateManager.resetUIState()
+    this.shopManager.closeShop()
     
-    const initialState = createInitialGameState()
-    initialState.gameStatus = 'character-select' // Start in character selection
-    this.setState(initialState)
+    this.setState(result.newState)
   }
 
   // Debug helpers for testing win/loss conditions
