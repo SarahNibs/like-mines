@@ -4,6 +4,8 @@
  */
 
 import { RunState, Board, Tile, TileContent, getTileAt } from './types'
+import { addItemToInventory, applyItemEffect, fightMonster } from './gameLogic'
+import { CHEST } from './items'
 
 export interface TileContentResult {
   success: boolean
@@ -96,7 +98,6 @@ export class TileContentManager {
     
     if (item.immediate) {
       // Apply immediate effect using gameLogic
-      const { applyItemEffect } = require('./gameLogic')
       const message = applyItemEffect(updatedRun, item)
       
       // Check for game over after immediate effects (like bear trap)
@@ -116,7 +117,6 @@ export class TileContentManager {
       }
     } else {
       // Try to add to inventory
-      const { addItemToInventory } = require('./gameLogic')
       const inventoryFull = !this.hasInventorySpace(updatedRun)
       
       if (inventoryFull) {
@@ -247,7 +247,6 @@ export class TileContentManager {
   // Fight a monster and determine outcome
   fightMonster(monster: any, run: RunState, board: Board, tileX: number, tileY: number): MonsterFightResult {
     let updatedRun = { ...run }
-    const { fightMonster } = require('./gameLogic')
     
     // Fight the monster using gameLogic
     const { damage: damageTaken, monsterDefeated } = fightMonster(updatedRun, monster)
@@ -312,8 +311,7 @@ export class TileContentManager {
       }
     }
     
-    // Import the CHEST item
-    const { CHEST } = require('./items')
+    // Use the imported CHEST item
     
     // Collect all valid adjacent positions
     const adjacentPositions: { x: number; y: number }[] = []
