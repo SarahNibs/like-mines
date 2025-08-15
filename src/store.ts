@@ -281,29 +281,35 @@ class GameStore {
   private handleTileContent(tile: any): void {
     const result = this.tileContentManager.handleTileContent(tile, this.state.run, this.state.board)
     
-    // Update the run state
-    this.state.run = result.updatedRun
-    
     // Handle special actions based on result
     if (result.triggerUpgradeChoice) {
       this.triggerUpgradeChoice()
       console.log(result.message)
       this.pendingUpgradeChoice = true
+      this.setState({ run: result.updatedRun })
     } else if (result.triggerShop) {
-      this.openShop()
       console.log(result.message)
+      this.setState({ run: result.updatedRun })
+      this.openShop() // Call after setState to ensure run state is updated first
     } else if (result.playerDied) {
       console.log(result.message)
-      this.setState({ gameStatus: 'player-died' })
+      this.setState({ 
+        run: result.updatedRun,
+        gameStatus: 'player-died' 
+      })
       return
     } else {
-      // Log the result message
+      // Log the result message and update run state
       console.log(result.message)
+      this.setState({ run: result.updatedRun })
     }
     
     // Update board if it was modified (e.g., RICH effect)
     if (result.boardModified) {
-      this.setState({ board: { ...this.state.board } })
+      this.setState({ 
+        board: { ...this.state.board },
+        run: result.updatedRun 
+      })
     }
   }
 

@@ -311,13 +311,12 @@ describe('GameStore', () => {
     it('should handle trophy operations', () => {
       expect(typeof gameStore.awardTrophies).toBe('function')
       expect(typeof gameStore.collapseTrophies).toBe('function')
-      expect(typeof gameStore.stealGoldTrophy).toBe('function')
       
       gameStore.awardTrophies()
       gameStore.collapseTrophies()
       
-      const result = gameStore.stealGoldTrophy('Test Monster')
-      expect(typeof result).toBe('boolean')
+      // Note: stealGoldTrophy is now handled by TileContentManager
+      // and is automatically called during tile content processing
     })
   })
 
