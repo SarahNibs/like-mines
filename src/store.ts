@@ -2,6 +2,7 @@ import { GameState, getTileAt, TileContent } from './types'
 import { createInitialGameState, createCharacterRunState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect } from './gameLogic'
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
+import { TileContentManager } from './TileContentManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -11,11 +12,13 @@ class GameStore {
   private aiTurnTimeout: number | null = null
   private boardProgressionTimeout: number | null = null
   private pendingUpgradeChoice: boolean = false
+  private tileContentManager: TileContentManager
 
   constructor() {
     this.state = createInitialGameState()
     this.state.gameStatus = 'character-select' // Start in character selection
     this.ai = new DumbAI()
+    this.tileContentManager = new TileContentManager()
   }
 
   // Get current state
@@ -276,87 +279,31 @@ class GameStore {
 
   // Handle tile content when revealed
   private handleTileContent(tile: any): void {
-    const run = this.state.run
+    const result = this.tileContentManager.handleTileContent(tile, this.state.run, this.state.board)
     
-    if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
-      // Show upgrade choice widget instead of applying immediately
+    // Update the run state
+    this.state.run = result.updatedRun
+    
+    // Handle special actions based on result
+    if (result.triggerUpgradeChoice) {
       this.triggerUpgradeChoice()
-      console.log(`Found upgrade! Choose your enhancement.`)
-      // Set a flag to prevent AI turn until upgrade is chosen
+      console.log(result.message)
       this.pendingUpgradeChoice = true
-    } else if (tile.content === TileContent.Item && tile.itemData) {
-      const item = tile.itemData
-      
-      if (item.immediate) {
-        // Apply immediate effect
-        const message = applyItemEffect(run, item)
-        console.log(message) // For now, just log - we'll add a message system later
-        
-        // Check for game over after immediate effects (like bear trap)
-        if (run.hp <= 0) {
-          console.log('Player died! Game over.')
-          this.setState({ gameStatus: 'player-died' })
-          return
-        }
-        
-        // Handle shop opening
-        if (item.id === 'shop') {
-          this.openShop()
-        }
-      } else {
-        // Try to add to inventory
-        const success = addItemToInventory(run, item)
-        if (!success) {
-          // Inventory full - check if this is an item that can be auto-applied
-          if (item.id === 'ward') {
-            // Apply ward effect immediately
-            run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 4
-            if (!run.upgrades.includes('ward-temp')) {
-              run.upgrades.push('ward-temp') // Add to upgrades list for display
-            }
-            console.log(`Inventory full! Ward auto-applied: +4 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
-          } else if (item.id === 'blaze') {
-            // Apply blaze effect immediately
-            run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
-            if (!run.upgrades.includes('blaze-temp')) {
-              run.upgrades.push('blaze-temp') // Add to upgrades list for display
-            }
-            console.log(`Inventory full! Blaze auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`)
-          } else {
-            console.log(`Inventory full! ${item.name} was lost.`)
-          }
-        }
-      }
-    } else if (tile.content === TileContent.Monster && tile.monsterData) {
-      const monster = tile.monsterData
-      const damage = fightMonster(monster, run)
-      const newHp = run.hp - damage
-      
-      // Check if player would die from this damage
-      if (newHp <= 0) {
-        // Try to steal a gold trophy to prevent death
-        if (this.stealGoldTrophy(monster.name)) {
-          run.hp = 1 // Survive with 1 HP instead of taking full damage
-          console.log(`${monster.name} stole a gold trophy! You survive with 1 HP.`)
-          // No loot or Rich upgrade when saved by trophy theft
-        } else {
-          run.hp = newHp // Apply the lethal damage
-          console.log('Player died! Game over.')
-          this.setState({ gameStatus: 'player-died' })
-          return
-        }
-      } else {
-        // Apply damage normally and award loot
-        run.hp = newHp
-        run.gold += run.loot
-        
-        // RICH upgrade: add gold items to adjacent tiles when defeating monsters
-        if (run.upgrades.includes('rich')) {
-          this.applyRichUpgrade(tile.x, tile.y).catch(console.error)
-        }
-        
-        console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${run.loot} gold. HP: ${run.hp}/${run.maxHp}`)
-      }
+    } else if (result.triggerShop) {
+      this.openShop()
+      console.log(result.message)
+    } else if (result.playerDied) {
+      console.log(result.message)
+      this.setState({ gameStatus: 'player-died' })
+      return
+    } else {
+      // Log the result message
+      console.log(result.message)
+    }
+    
+    // Update board if it was modified (e.g., RICH effect)
+    if (result.boardModified) {
+      this.setState({ board: { ...this.state.board } })
     }
   }
 
@@ -781,7 +728,11 @@ class GameStore {
       
       // RICH upgrade: add gold items to adjacent tiles when defeating monsters
       if (this.state.run.upgrades.includes('rich')) {
-        this.applyRichUpgrade(x, y).catch(console.error)
+        const richResult = this.tileContentManager.applyRichEffect(this.state.board, x, y, this.state.run)
+        if (richResult.success) {
+          console.log(richResult.message)
+          this.setState({ board: { ...this.state.board } })
+        }
       }
       
       console.log(`Staff defeated ${monsterName}! Gained ${this.state.run.loot} gold.`)
@@ -1115,46 +1066,6 @@ class GameStore {
     this.setState({ run })
   }
 
-  // Apply RICH upgrade effect: place a single treasure chest on an adjacent tile
-  private async applyRichUpgrade(x: number, y: number): Promise<void> {
-    const board = this.state.board
-    
-    // Import the CHEST item
-    const { CHEST } = await import('./items')
-    
-    // Collect all valid adjacent positions
-    const adjacentTiles = []
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue // Skip center tile
-        
-        const adjX = x + dx
-        const adjY = y + dy
-        const adjTile = getTileAt(board, adjX, adjY)
-        
-        // Only consider unrevealed empty tiles
-        if (adjTile && !adjTile.revealed && adjTile.content === TileContent.Empty) {
-          adjacentTiles.push({ tile: adjTile, x: adjX, y: adjY })
-        }
-      }
-    }
-    
-    // Place chest on exactly one random adjacent tile (if any exist)
-    if (adjacentTiles.length > 0) {
-      const randomIndex = Math.floor(Math.random() * adjacentTiles.length)
-      const chosenTile = adjacentTiles[randomIndex]
-      
-      chosenTile.tile.content = TileContent.Item
-      chosenTile.tile.itemData = CHEST
-      
-      console.log(`Rich upgrade: placed treasure chest at (${chosenTile.x}, ${chosenTile.y})`)
-      
-      // Force a state update to make the chest visible immediately
-      this.setState({
-        board: { ...board }
-      })
-    }
-  }
 
   // Rewind methods removed
 
@@ -1503,31 +1414,6 @@ class GameStore {
     }
   }
   
-  // Steal a gold trophy when player would die
-  stealGoldTrophy(monsterName: string): boolean {
-    const goldTrophyIndex = this.state.run.trophies.findIndex(t => t.type === 'gold' && !t.stolen)
-    
-    if (goldTrophyIndex !== -1) {
-      const newTrophies = [...this.state.run.trophies]
-      newTrophies[goldTrophyIndex] = {
-        ...newTrophies[goldTrophyIndex],
-        stolen: true,
-        stolenBy: monsterName
-      }
-      
-      this.setState({
-        run: {
-          ...this.state.run,
-          trophies: newTrophies
-        }
-      })
-      
-      console.log(`${monsterName} stole a gold trophy!`)
-      return true
-    }
-    
-    return false
-  }
 }
 
 // Export singleton instance
