@@ -3,6 +3,7 @@ import { createInitialGameState, createCharacterRunState, revealTile, checkBoard
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
 import { TileContentManager } from './TileContentManager'
+import { InventoryManager, ItemUsageResult } from './InventoryManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -13,12 +14,14 @@ class GameStore {
   private boardProgressionTimeout: number | null = null
   private pendingUpgradeChoice: boolean = false
   private tileContentManager: TileContentManager
+  private inventoryManager: InventoryManager
 
   constructor() {
     this.state = createInitialGameState()
     this.state.gameStatus = 'character-select' // Start in character selection
     this.ai = new DumbAI()
     this.tileContentManager = new TileContentManager()
+    this.inventoryManager = new InventoryManager()
   }
 
   // Get current state
@@ -281,14 +284,6 @@ class GameStore {
   private handleTileContent(tile: any): void {
     const result = this.tileContentManager.handleTileContent(tile, this.state.run, this.state.board)
     
-    console.log('TileContentManager returned result:', {
-      success: result.success,
-      message: result.message,
-      triggerUpgradeChoice: result.triggerUpgradeChoice,
-      triggerShop: result.triggerShop,
-      playerDied: result.playerDied
-    })
-    
     // Handle special actions based on result
     if (result.triggerUpgradeChoice) {
       this.triggerUpgradeChoice()
@@ -326,171 +321,88 @@ class GameStore {
     const item = this.state.run.inventory[index]
     if (!item) return
     
-    // Handle special items
-    if (item.id === 'crystal-ball') {
-      // Remove the crystal ball BEFORE revealing the tile to free up inventory space
-      removeItemFromInventory(this.state.run, index)
-      this.setState({ run: { ...this.state.run } })
-      this.useCrystalBall()
-      return // Exit early to avoid removing the item again
-    } else if (item.id === 'transmute') {
-      this.startTransmuteMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'detector') {
-      this.startDetectorMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'ward') {
-      // Stack ward bonuses
-      this.state.run.temporaryBuffs.ward = (this.state.run.temporaryBuffs.ward || 0) + 4
-      if (!this.state.run.upgrades.includes('ward-temp')) {
-        this.state.run.upgrades.push('ward-temp') // Add to upgrades list for display
+    const result = this.inventoryManager.useItem(
+      item, 
+      index, 
+      this.state.run, 
+      this.state.board
+    )
+    
+    if (!result.success) {
+      console.log(result.message)
+      return
+    }
+    
+    // Handle special activation modes
+    if (result.activatedMode) {
+      switch (result.activatedMode) {
+        case 'transmute':
+          this.startTransmuteMode(result.itemIndex!)
+          break
+        case 'detector':
+          this.startDetectorMode(result.itemIndex!)
+          break
+        case 'key':
+          this.startKeyMode(result.itemIndex!)
+          break
+        case 'staff':
+          this.startStaffMode(result.itemIndex!)
+          break
+        case 'ring':
+          this.useRing(result.itemIndex!)
+          break
       }
-      console.log(`Ward activated! +4 defense (total: +${this.state.run.temporaryBuffs.ward}) for your next fight.`)
-    } else if (item.id === 'blaze') {
-      // Stack blaze bonuses
-      this.state.run.temporaryBuffs.blaze = (this.state.run.temporaryBuffs.blaze || 0) + 5
-      if (!this.state.run.upgrades.includes('blaze-temp')) {
-        this.state.run.upgrades.push('blaze-temp') // Add to upgrades list for display
-      }
-      console.log(`Blaze activated! +5 attack (total: +${this.state.run.temporaryBuffs.blaze}) for your next fight.`)
-    } else if (item.id === 'protection') {
-      // Stack protection charges
-      this.state.run.temporaryBuffs.protection = (this.state.run.temporaryBuffs.protection || 0) + 1
-      console.log(`Protection activated! Next ${this.state.run.temporaryBuffs.protection} opponent/neutral reveal(s) won't end your turn.`)
-    } else if (item.id === 'clue') {
-      // Grant additional clue
+    }
+    
+    // Handle crystal ball specific logic
+    if (item.id === 'crystal-ball' && result.success) {
+      this.handleCrystalBallResult(result)
+      return
+    }
+    
+    // Handle clue specific logic
+    if (item.id === 'clue' && result.success) {
       this.grantAdditionalClue()
-      console.log('Clue used! You have gained an additional clue.')
-    } else if (item.id === 'whistle') {
-      this.useWhistle()
-    } else if (item.id === 'key') {
-      this.startKeyMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'staff-of-fireballs') {
-      this.startStaffMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'ring-of-true-seeing') {
-      this.useRing(index)
-      return // Don't consume the item yet
-    } else {
-      const message = applyItemEffect(this.state.run, item)
-      console.log(message)
     }
     
-    removeItemFromInventory(this.state.run, index)
-    this.setState({ run: { ...this.state.run } })
+    console.log(result.message)
+    
+    // Update run state
+    this.setState({ run: result.updatedRun })
+    
+    // Update board if modified
+    if (result.boardUpdated) {
+      this.setState({ board: { ...this.state.board } })
+    }
   }
-
-  // Whistle functionality - redistribute all monsters to random unrevealed tiles
-  private useWhistle(): void {
-    const board = this.state.board
-    const monsters = []
-    
-    // Find all monsters on unrevealed tiles and collect their data
-    for (let y = 0; y < board.height; y++) {
-      for (let x = 0; x < board.width; x++) {
-        const tile = board.tiles[y][x]
-        if (tile.content === TileContent.Monster && !tile.revealed && tile.monsterData) {
-          monsters.push(tile.monsterData)
-          // Clear the monster from this tile
-          tile.content = TileContent.Empty
-          tile.monsterData = undefined
+  
+  // Handle crystal ball result with tile revelation and content processing
+  private handleCrystalBallResult(result: ItemUsageResult): void {
+    // The InventoryManager handles revealing the tile, but we need to handle tile content
+    // and check for board completion
+    const revealPos = (result as any).revealedPosition
+    if (revealPos) {
+      const tile = getTileAt(this.state.board, revealPos.x, revealPos.y)
+      if (tile) {
+        // Process tile content through TileContentManager
+        this.handleTileContent(tile)
+        
+        // Check for board completion
+        const newBoardStatus = checkBoardStatus(this.state.board)
+        if (newBoardStatus === 'won') {
+          this.handleBoardWon()
         }
       }
     }
     
-    if (monsters.length === 0) {
-      console.log('Whistle: No monsters found to redistribute!')
-      return
-    }
-    
-    // Find all unrevealed tiles that can hold monsters
-    const availableTiles = []
-    for (let y = 0; y < board.height; y++) {
-      for (let x = 0; x < board.width; x++) {
-        const tile = board.tiles[y][x]
-        if (!tile.revealed && tile.content === TileContent.Empty) {
-          availableTiles.push({ x, y })
-        }
-      }
-    }
-    
-    if (availableTiles.length === 0) {
-      console.log('Whistle: No available tiles to place monsters!')
-      return
-    }
-    
-    // Redistribute monsters to random available tiles
-    for (const monster of monsters) {
-      if (availableTiles.length === 0) break // No more tiles available
-      
-      const randomIndex = Math.floor(Math.random() * availableTiles.length)
-      const tilePos = availableTiles.splice(randomIndex, 1)[0]
-      const tile = board.tiles[tilePos.y][tilePos.x]
-      
-      tile.content = TileContent.Monster
-      tile.monsterData = monster
-    }
-    
-    console.log(`Whistle: Redistributed ${monsters.length} monsters to new locations!`)
-    
-    // Update the board state
-    this.setState({
-      board: { ...board }
+    // Update states
+    this.setState({ 
+      run: result.updatedRun,
+      board: { ...this.state.board }
     })
   }
 
-  // Crystal ball functionality - reveal random player tile
-  private useCrystalBall(): void {
-    const board = this.state.board
-    const unrevealedPlayerTiles = []
-    
-    // Find all unrevealed player tiles
-    for (let y = 0; y < board.height; y++) {
-      for (let x = 0; x < board.width; x++) {
-        const tile = board.tiles[y][x]
-        if (tile.owner === 'player' && !tile.revealed) {
-          unrevealedPlayerTiles.push({ x, y })
-        }
-      }
-    }
-    
-    if (unrevealedPlayerTiles.length === 0) {
-      console.log('Crystal Ball: No unrevealed player tiles to reveal!')
-      return
-    }
-    
-    // Pick a random unrevealed player tile
-    const randomIndex = Math.floor(Math.random() * unrevealedPlayerTiles.length)
-    const tilePos = unrevealedPlayerTiles[randomIndex]
-    
-    console.log(`Crystal Ball: Revealing player tile at (${tilePos.x}, ${tilePos.y})`)
-    
-    // Reveal the tile and handle its content
-    const tile = getTileAt(board, tilePos.x, tilePos.y)
-    if (tile) {
-      const success = revealTile(board, tilePos.x, tilePos.y, 'player')
-      if (success) {
-        // Handle tile content 
-        this.handleTileContent(tile)
-        
-        // Update board status
-        const newBoardStatus = checkBoardStatus(board)
-        this.setState({
-          board: { ...board },
-          boardStatus: newBoardStatus
-        })
-        
-        // Handle board completion if needed
-        if (newBoardStatus === 'won') {
-          this.awardTrophies()
-          this.handleBoardWon()
-        } else if (newBoardStatus === 'lost') {
-          this.handleBoardLost()
-        }
-      }
-    }
-  }
+
 
   // Grant additional clue functionality
   private grantAdditionalClue(): void {
@@ -889,13 +801,9 @@ class GameStore {
   // Shop functionality
   async openShop(): Promise<void> {
     try {
-      console.log('openShop() called - starting imports')
-      
       // Generate items and upgrades with costs scaling by level and Traders bonus
       const { SHOP_ITEMS } = await import('./items')
       const { getAvailableUpgrades } = await import('./upgrades')
-      
-      console.log('Imports successful, generating shop content')
       
       // Base costs based on shop number (shops appear on levels 3, 6, 9, 12, 15, 18)
       const level = this.state.run.currentLevel
@@ -945,16 +853,10 @@ class GameStore {
         })
       }
       
-      console.log('Shop opened with items:', shopItems)
-      console.log('Current state before setState:', { shopOpen: this.state.shopOpen })
-      
       this.setState({
         shopOpen: true,
         shopItems
       })
-      
-      console.log('setState called, new state should be:', { shopOpen: true, itemCount: shopItems.length })
-      console.log('Actual state after setState:', { shopOpen: this.state.shopOpen, itemCount: this.state.shopItems.length })
     } catch (error) {
       console.error('Error opening shop:', error)
     }
@@ -1176,14 +1078,13 @@ class GameStore {
     this.setState({ upgradeChoice: null })
   }
 
-  // Discard item from inventory (legacy method for direct discard)
+  // Discard item from inventory
   discardInventoryItem(index: number): void {
-    const item = this.state.run.inventory[index]
-    if (!item) return
-    
-    console.log(`Discarded ${item.name}`)
-    removeItemFromInventory(this.state.run, index)
-    this.setState({ run: { ...this.state.run } })
+    const result = this.inventoryManager.discardItem(this.state.run, index)
+    if (result.success) {
+      console.log(result.message)
+      this.setState({ run: result.updatedRun })
+    }
   }
 
 

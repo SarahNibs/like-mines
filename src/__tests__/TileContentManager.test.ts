@@ -17,16 +17,15 @@ jest.mock('../gameLogic', () => ({
     } else if (item.id === 'bear-trap') {
       run.hp -= 10
       return 'Bear trap triggers for 10 damage!'
+    } else if (item.id === 'shop') {
+      return 'Shop opened!'
     }
     return `${item.name} effect applied`
   }),
-  fightMonster: jest.fn((run, monster) => {
-    // Simple fight logic for testing
+  fightMonster: jest.fn((monster, run) => {
+    // Simple fight logic for testing - return just damage (number) like real function
     const damage = Math.max(0, monster.attack - run.defense)
-    return {
-      damage,
-      monsterDefeated: monster.hp <= run.attack
-    }
+    return damage
   })
 }))
 
@@ -130,6 +129,24 @@ describe('TileContentManager', () => {
       expect(result.success).toBe(true)
       expect(result.message).toBe('Healing potion restores 20 HP!')
       expect(result.updatedRun.hp).toBe(70) // 50 + 20
+    })
+
+    it('should handle shop items with triggerShop flag', () => {
+      mockTile.content = TileContent.Item
+      mockTile.itemData = {
+        id: 'shop',
+        name: 'Shop',
+        description: 'Opens shop',
+        icon: '🏪',
+        immediate: true
+      }
+      
+      const result = manager.handleTileContent(mockTile, mockRun, mockBoard)
+      
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Shop opened!')
+      expect(result.triggerShop).toBe(true)
+      expect(result.updatedRun).toEqual(mockRun)
     })
 
     it('should handle immediate items that cause death', () => {

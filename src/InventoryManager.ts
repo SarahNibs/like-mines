@@ -4,6 +4,19 @@
  */
 
 import { RunState, Board, GameState, getTileAt, TileContent } from './types'
+import { removeItemFromInventory, applyItemEffect, revealTile, checkBoardStatus } from './gameLogic'
+import { generateClue } from './clues'
+
+// Deep copy utility for RunState to prevent shared object mutations
+function deepCopyRunState(run: RunState): RunState {
+  return {
+    ...run,
+    inventory: run.inventory.map(item => item ? { ...item } : null),
+    temporaryBuffs: { ...run.temporaryBuffs },
+    upgrades: [...run.upgrades],
+    trophies: run.trophies.map(trophy => ({ ...trophy }))
+  }
+}
 
 export interface InventoryItem {
   id: string
@@ -56,7 +69,7 @@ export class InventoryManager {
     run: RunState, 
     board: Board
   ): ItemUsageResult {
-    const updatedRun = { ...run }
+    const updatedRun = deepCopyRunState(run)
     
     // Handle null/undefined items
     if (!item || !item.id) {
@@ -175,7 +188,7 @@ export class InventoryManager {
   
   // Handle ward usage - adds defense buff
   private handleWardUsage(itemIndex: number, run: RunState): ItemUsageResult {
-    const updatedRun = { ...run }
+    const updatedRun = deepCopyRunState(run)
     updatedRun.temporaryBuffs.ward = (updatedRun.temporaryBuffs.ward || 0) + 4
     
     if (!updatedRun.upgrades.includes('ward-temp')) {
@@ -192,7 +205,7 @@ export class InventoryManager {
   
   // Handle blaze usage - adds attack buff
   private handleBlazeUsage(itemIndex: number, run: RunState): ItemUsageResult {
-    const updatedRun = { ...run }
+    const updatedRun = deepCopyRunState(run)
     updatedRun.temporaryBuffs.blaze = (updatedRun.temporaryBuffs.blaze || 0) + 5
     
     if (!updatedRun.upgrades.includes('blaze-temp')) {
@@ -209,7 +222,7 @@ export class InventoryManager {
   
   // Handle protection usage - adds turn protection
   private handleProtectionUsage(itemIndex: number, run: RunState): ItemUsageResult {
-    const updatedRun = { ...run }
+    const updatedRun = deepCopyRunState(run)
     updatedRun.temporaryBuffs.protection = (updatedRun.temporaryBuffs.protection || 0) + 1
     
     return {
@@ -257,9 +270,8 @@ export class InventoryManager {
   
   // Handle generic item usage with applyItemEffect
   private handleGenericItemUsage(item: InventoryItem, itemIndex: number, run: RunState): ItemUsageResult {
-    // Import and apply the item effect
-    const { applyItemEffect } = require('./gameLogic')
-    const updatedRun = { ...run }
+    // Apply the item effect
+    const updatedRun = deepCopyRunState(run)
     const message = applyItemEffect(updatedRun, item)
     
     return {
@@ -368,8 +380,7 @@ export class InventoryManager {
   
   // Remove item from inventory
   removeItemFromInventory(run: RunState, index: number): RunState {
-    const { removeItemFromInventory } = require('./gameLogic')
-    const updatedRun = { ...run }
+    const updatedRun = deepCopyRunState(run)
     removeItemFromInventory(updatedRun, index)
     return updatedRun
   }
@@ -433,7 +444,7 @@ export class InventoryManager {
     const item = updatedRun.inventory[itemIndex]
     
     if (!item || !item.multiUse) {
-      return { updatedRun: { ...run }, shouldRemove: false }
+      return { updatedRun: deepCopyRunState(run), shouldRemove: false }
     }
     
     item.multiUse.currentUses -= chargesUsed

@@ -7,6 +7,17 @@ import { RunState, Board, Tile, TileContent, getTileAt } from './types'
 import { addItemToInventory, applyItemEffect, fightMonster } from './gameLogic'
 import { CHEST } from './items'
 
+// Deep copy utility for RunState to prevent shared object mutations
+function deepCopyRunState(run: RunState): RunState {
+  return {
+    ...run,
+    inventory: run.inventory.map(item => item ? { ...item } : null),
+    temporaryBuffs: { ...run.temporaryBuffs },
+    upgrades: [...run.upgrades],
+    trophies: run.trophies.map(trophy => ({ ...trophy }))
+  }
+}
+
 export interface TileContentResult {
   success: boolean
   message: string
@@ -41,43 +52,29 @@ export class TileContentManager {
   
   // Process tile content when revealed
   handleTileContent(tile: Tile, run: RunState, board: Board): TileContentResult {
-    const updatedRun = { ...run }
-    
-    console.log('TileContentManager.handleTileContent called with tile:', {
-      x: tile.x,
-      y: tile.y,
-      content: tile.content,
-      owner: tile.owner
-    })
+    const updatedRun = deepCopyRunState(run)
     
     switch (tile.content) {
       case TileContent.PermanentUpgrade:
-        console.log('Handling PermanentUpgrade tile')
         return this.handleUpgradeTile(tile, updatedRun)
       
       case TileContent.Item:
-        console.log('Handling Item tile')
         return this.handleItemTile(tile, updatedRun)
       
       case TileContent.Monster:
-        console.log('Handling Monster tile')
         return this.handleMonsterTile(tile, updatedRun, board)
       
       case TileContent.Shop:
-        console.log('Handling Shop tile - should return triggerShop: true')
         return this.handleShopTile(tile, updatedRun)
       
       case TileContent.Gold:
-        console.log('Handling Gold tile')
         return this.handleGoldTile(tile, updatedRun)
       
       case TileContent.Trap:
-        console.log('Handling Trap tile')
         return this.handleTrapTile(tile, updatedRun)
       
       case TileContent.Empty:
       default:
-        console.log('Handling Empty/default tile')
         return {
           success: true,
           message: 'Empty tile revealed',
@@ -108,7 +105,7 @@ export class TileContentManager {
     }
     
     const item = tile.itemData
-    const updatedRun = { ...run }
+    const updatedRun = deepCopyRunState(run)
     
     if (item.immediate) {
       // Apply immediate effect using gameLogic
@@ -121,6 +118,16 @@ export class TileContentManager {
           message,
           updatedRun,
           playerDied: true
+        }
+      }
+      
+      // Check if this is a shop item that should trigger shop opening
+      if (item.id === 'shop') {
+        return {
+          success: true,
+          message,
+          updatedRun,
+          triggerShop: true
         }
       }
       
@@ -209,7 +216,7 @@ export class TileContentManager {
   
   // Handle gold tiles - award gold
   private handleGoldTile(tile: Tile, run: RunState): TileContentResult {
-    const updatedRun = { ...run }
+    const updatedRun = deepCopyRunState(run)
     const goldAmount = 3 // Base gold amount
     updatedRun.gold += goldAmount
     
@@ -222,7 +229,7 @@ export class TileContentManager {
   
   // Handle trap tiles - apply damage
   private handleTrapTile(tile: Tile, run: RunState): TileContentResult {
-    let updatedRun = { ...run }
+    let updatedRun = deepCopyRunState(run)
     const trapDamage = 10 // Base trap damage
     
     // Check if player would die from trap damage
@@ -260,10 +267,20 @@ export class TileContentManager {
   
   // Fight a monster and determine outcome
   fightMonster(monster: any, run: RunState, board: Board, tileX: number, tileY: number): MonsterFightResult {
-    let updatedRun = { ...run }
+    let updatedRun = deepCopyRunState(run)
+    
+    // Ensure temporaryBuffs is initialized
+    if (!updatedRun.temporaryBuffs) {
+      updatedRun.temporaryBuffs = {}
+    }
     
     // Fight the monster using gameLogic
-    const { damage: damageTaken, monsterDefeated } = fightMonster(updatedRun, monster)
+    const damageTaken = fightMonster(monster, updatedRun)
+    
+    // Calculate if monster was defeated based on player attack vs monster HP/defense
+    const effectiveAttack = updatedRun.attack + (updatedRun.temporaryBuffs?.blaze || 0)
+    const damageToMonster = Math.max(0, effectiveAttack - monster.defense)
+    const monsterDefeated = damageToMonster >= monster.hp
     
     // Check if player would die from this damage
     const newHp = updatedRun.hp - damageTaken
@@ -376,7 +393,7 @@ export class TileContentManager {
     const goldTrophyIndex = run.trophies.findIndex(t => t.type === 'gold' && !t.stolen)
     
     if (goldTrophyIndex !== -1) {
-      const updatedRun = { ...run }
+      const updatedRun = deepCopyRunState(run)
       const newTrophies = [...updatedRun.trophies]
       newTrophies[goldTrophyIndex] = {
         ...newTrophies[goldTrophyIndex],

@@ -4,6 +4,14 @@ import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
 import { ALL_CHARACTERS } from './characters'
 
+// Deep copy utility for ItemData to prevent shared object mutations
+function deepCopyItem(item: ItemData): ItemData {
+  return {
+    ...item,
+    multiUse: item.multiUse ? { ...item.multiUse } : undefined
+  }
+}
+
 // Get adjacent tile positions (8-directional)
 function getAdjacentPositions(x: number, y: number): Array<{x: number, y: number}> {
   return [
@@ -137,7 +145,8 @@ export function createCharacterRunState(characterId: string): RunState {
   })
   
   // Fill inventory with character items plus base Scroll of Protection
-  const allStartingItems = [PROTECTION, ...character.startingItems]
+  // Create deep copies to prevent shared object mutations
+  const allStartingItems = [deepCopyItem(PROTECTION), ...character.startingItems.map(deepCopyItem)]
   
   for (let i = 0; i < allStartingItems.length && i < runState.maxInventory; i++) {
     runState.inventory[i] = allStartingItems[i]
@@ -306,7 +315,7 @@ export function addItemToInventory(runState: RunState, item: ItemData): boolean 
   // Find first empty slot
   for (let i = 0; i < runState.inventory.length; i++) {
     if (runState.inventory[i] === null) {
-      runState.inventory[i] = item
+      runState.inventory[i] = deepCopyItem(item) // Deep copy to prevent shared mutations
       return true
     }
   }
