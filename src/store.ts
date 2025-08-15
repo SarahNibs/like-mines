@@ -281,6 +281,14 @@ class GameStore {
   private handleTileContent(tile: any): void {
     const result = this.tileContentManager.handleTileContent(tile, this.state.run, this.state.board)
     
+    console.log('TileContentManager returned result:', {
+      success: result.success,
+      message: result.message,
+      triggerUpgradeChoice: result.triggerUpgradeChoice,
+      triggerShop: result.triggerShop,
+      playerDied: result.playerDied
+    })
+    
     // Handle special actions based on result
     if (result.triggerUpgradeChoice) {
       this.triggerUpgradeChoice()

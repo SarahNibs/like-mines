@@ -43,27 +43,41 @@ export class TileContentManager {
   handleTileContent(tile: Tile, run: RunState, board: Board): TileContentResult {
     const updatedRun = { ...run }
     
+    console.log('TileContentManager.handleTileContent called with tile:', {
+      x: tile.x,
+      y: tile.y,
+      content: tile.content,
+      owner: tile.owner
+    })
+    
     switch (tile.content) {
       case TileContent.PermanentUpgrade:
+        console.log('Handling PermanentUpgrade tile')
         return this.handleUpgradeTile(tile, updatedRun)
       
       case TileContent.Item:
+        console.log('Handling Item tile')
         return this.handleItemTile(tile, updatedRun)
       
       case TileContent.Monster:
+        console.log('Handling Monster tile')
         return this.handleMonsterTile(tile, updatedRun, board)
       
       case TileContent.Shop:
+        console.log('Handling Shop tile - should return triggerShop: true')
         return this.handleShopTile(tile, updatedRun)
       
       case TileContent.Gold:
+        console.log('Handling Gold tile')
         return this.handleGoldTile(tile, updatedRun)
       
       case TileContent.Trap:
+        console.log('Handling Trap tile')
         return this.handleTrapTile(tile, updatedRun)
       
       case TileContent.Empty:
       default:
+        console.log('Handling Empty/default tile')
         return {
           success: true,
           message: 'Empty tile revealed',
