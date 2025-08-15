@@ -147,16 +147,29 @@ function createClueTileElement(
     slash.appendChild(slashLine)
     tileEl.appendChild(slash)
   } else if (boardTile.annotated === 'dog-ear') {
+    // Create concave dog-ear effect using SVG to match the board rendering
     const dogEar = document.createElement('div')
     dogEar.style.position = 'absolute'
-    dogEar.style.top = '1px'
-    dogEar.style.right = '1px'
-    dogEar.style.width = '6px'
-    dogEar.style.height = '6px'
-    dogEar.style.backgroundColor = '#90ee90'
-    dogEar.style.borderRadius = '0 0 0 50%'
+    dogEar.style.top = '0'
+    dogEar.style.right = '0'
+    dogEar.style.width = '8px'
+    dogEar.style.height = '8px'
     dogEar.style.pointerEvents = 'none'
+    dogEar.style.overflow = 'hidden'
     
+    // Create SVG for concave corner
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('width', '8')
+    svg.setAttribute('height', '8')
+    svg.setAttribute('viewBox', '0 0 8 8')
+    
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    // Create concave corner path: start at top-right, go down, curve inward, go left
+    path.setAttribute('d', 'M 8 0 L 8 8 L 0 8 Q 6 6 8 0 Z')
+    path.setAttribute('fill', '#90ee90')
+    
+    svg.appendChild(path)
+    dogEar.appendChild(svg)
     tileEl.appendChild(dogEar)
   }
   

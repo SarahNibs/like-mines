@@ -18,12 +18,20 @@ export function updateShopWidget(
     // Check if board is won while shop is open
     const isBoardWon = state.boardStatus === 'won'
     
-    // Update close button text and disable board if board is won
+    // Update close button text and styling based on board status
     if (isBoardWon) {
       shopCloseBtn.textContent = 'Move on'
+      // Make Move On button more visible with light green background
+      shopCloseBtn.style.backgroundColor = '#90ee90'
+      shopCloseBtn.style.color = '#000'
+      shopCloseBtn.style.fontWeight = 'bold'
       canvas.style.pointerEvents = 'none' // Disable board interactions
     } else {
       shopCloseBtn.textContent = 'Close'
+      // Reset to default styling
+      shopCloseBtn.style.backgroundColor = '#666'
+      shopCloseBtn.style.color = 'white'
+      shopCloseBtn.style.fontWeight = 'normal'
       canvas.style.pointerEvents = 'auto' // Enable board interactions
     }
     
