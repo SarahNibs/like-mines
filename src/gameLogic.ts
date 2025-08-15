@@ -6,6 +6,7 @@ import { ALL_CHARACTERS } from './characters'
 
 // Deep copy utility for ItemData to prevent shared object mutations
 function deepCopyItem(item: ItemData): ItemData {
+  if (!item) return item
   return {
     ...item,
     multiUse: item.multiUse ? { ...item.multiUse } : undefined

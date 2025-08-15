@@ -9,13 +9,23 @@ import { CHEST } from './items'
 
 // Deep copy utility for RunState to prevent shared object mutations
 function deepCopyRunState(run: RunState): RunState {
-  return {
-    ...run,
-    inventory: run.inventory.map(item => item ? { ...item } : null),
-    temporaryBuffs: { ...run.temporaryBuffs },
-    upgrades: [...run.upgrades],
-    trophies: run.trophies.map(trophy => ({ ...trophy }))
+  const result: any = { ...run }
+  
+  // Only deep copy properties that exist and are not null/undefined
+  if (run.inventory) {
+    result.inventory = run.inventory.map(item => item ? { ...item } : null)
   }
+  if (run.temporaryBuffs) {
+    result.temporaryBuffs = { ...run.temporaryBuffs }
+  }
+  if (run.upgrades) {
+    result.upgrades = [...run.upgrades]
+  }
+  if (run.trophies) {
+    result.trophies = run.trophies.map(trophy => ({ ...trophy }))
+  }
+  
+  return result
 }
 
 export interface TileContentResult {

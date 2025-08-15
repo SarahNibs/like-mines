@@ -193,7 +193,11 @@ describe('TileContentManager', () => {
         icon: '🛡️'
       }
       // Fill inventory
-      mockRun.inventory = [null, null, null] as any
+      mockRun.inventory = [
+        { id: 'item1', name: 'Item 1' },
+        { id: 'item2', name: 'Item 2' },
+        { id: 'item3', name: 'Item 3' }
+      ] as any
       
       const result = manager.handleTileContent(mockTile, mockRun, mockBoard)
       
@@ -212,7 +216,11 @@ describe('TileContentManager', () => {
         icon: '🔥'
       }
       // Fill inventory
-      mockRun.inventory = [null, null, null] as any
+      mockRun.inventory = [
+        { id: 'item1', name: 'Item 1' },
+        { id: 'item2', name: 'Item 2' },
+        { id: 'item3', name: 'Item 3' }
+      ] as any
       
       const result = manager.handleTileContent(mockTile, mockRun, mockBoard)
       
@@ -231,7 +239,11 @@ describe('TileContentManager', () => {
         icon: '⚔️'
       }
       // Fill inventory
-      mockRun.inventory = [null, null, null] as any
+      mockRun.inventory = [
+        { id: 'item1', name: 'Item 1' },
+        { id: 'item2', name: 'Item 2' },
+        { id: 'item3', name: 'Item 3' }
+      ] as any
       
       const result = manager.handleTileContent(mockTile, mockRun, mockBoard)
       
