@@ -215,8 +215,6 @@ export class ToolModeManager {
       tile.monsterData = undefined
       
       // Award gold for defeating monster
-      const incomeUpgrades = updatedRun.upgrades.filter(id => id === 'income').length
-      updatedRun.loot = 1 + incomeUpgrades
       updatedRun.gold += updatedRun.loot
     }
     
@@ -241,25 +239,31 @@ export class ToolModeManager {
   useRingAt(board: Board, x: number, y: number): RingResult {
     const tile = getTileAt(board, x, y)
     
-    if (!tile || !tile.fogged) {
+    if (!tile) {
       return {
         success: false,
-        message: 'Can only target fogged tiles with the Ring of True Seeing!',
+        message: 'Invalid tile position for Ring of True Seeing!',
         shouldEndMode: false, // Don't end mode for invalid targeting
         inventoryModified: false
       }
     }
     
-    // Remove fog from the tile
-    tile.fogged = false
+    // Check if tile has fog to remove
+    const hadFog = tile.fogged
+    if (hadFog) {
+      // Remove fog from the tile
+      tile.fogged = false
+    }
     
     return {
       success: true,
-      message: `Ring of True Seeing removes fog from tile at (${x}, ${y})`,
+      message: hadFog ? 
+        `Ring of True Seeing removes fog from tile at (${x}, ${y})` :
+        `Ring of True Seeing used on tile at (${x}, ${y}) but there was no fog to remove`,
       shouldEndMode: false, // Ring can be used multiple times if it has charges
-      inventoryModified: true, // Will consume a charge
-      boardModified: true,
-      defoggedPosition: { x, y }
+      inventoryModified: true, // Always consume a charge when used
+      boardModified: hadFog, // Only modified if fog was removed
+      defoggedPosition: hadFog ? { x, y } : undefined
     }
   }
   

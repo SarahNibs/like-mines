@@ -241,6 +241,7 @@ describe('ToolModeManager', () => {
       mockBoard.tiles[1][1].monsterData = { name: 'Rat', hp: 5, attack: 3, defense: 0 }
       mockRun.upgrades = ['attack', 'income'] // 1 attack, 1 income
       mockRun.gold = 10
+      mockRun.loot = 2 // 1 base + 1 income upgrade
       
       const result = manager.useStaffAt(mockBoard, 1, 1, mockRun)
       
@@ -287,13 +288,14 @@ describe('ToolModeManager', () => {
       expect(mockBoard.tiles[2][2].fogged).toBe(false)
     })
 
-    it('should reject targeting non-fogged tiles', () => {
+    it('should allow targeting non-fogged tiles but with no effect', () => {
       const result = manager.useRingAt(mockBoard, 1, 1)
       
-      expect(result.success).toBe(false)
+      expect(result.success).toBe(true)
       expect(result.shouldEndMode).toBe(false)
-      expect(result.inventoryModified).toBe(false)
-      expect(result.message).toBe('Can only target fogged tiles with the Ring of True Seeing!')
+      expect(result.inventoryModified).toBe(true) // Should consume charge
+      expect(result.boardModified).toBe(false) // No fog to remove
+      expect(result.message).toBe('Ring of True Seeing used on tile at (1, 1) but there was no fog to remove')
     })
   })
 

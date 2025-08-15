@@ -59,6 +59,11 @@ class GameStore {
       return false
     }
     
+    // Block player actions when upgrade choice is pending
+    if (this.state.upgradeChoice || this.pendingUpgradeChoice) {
+      return false
+    }
+    
     const tile = getTileAt(this.state.board, x, y)
     if (!tile || tile.revealed) {
       return false
@@ -100,7 +105,7 @@ class GameStore {
       if (tile.owner === 'neutral') {
         const restingCount = this.state.run.upgrades.filter(id => id === 'resting').length
         if (restingCount > 0) {
-          const healAmount = restingCount * 3
+          const healAmount = restingCount * 2
           this.state.run.hp = Math.min(this.state.run.maxHp, this.state.run.hp + healAmount)
           console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
         }
@@ -112,6 +117,11 @@ class GameStore {
       // Check if player died after handling content
       if (this.state.gameStatus === 'player-died') {
         return // Exit early if player died
+      }
+      
+      // Check if upgrade choice was triggered - pause game until choice is made
+      if (this.pendingUpgradeChoice || this.state.upgradeChoice) {
+        return // Exit early, do not continue turn logic until upgrade is chosen
       }
       
       // Check if Protection should activate before consuming it
@@ -716,14 +726,20 @@ class GameStore {
     if (!this.state.ringMode) return false
     
     const tile = getTileAt(this.state.board, x, y)
-    if (!tile || !tile.fogged) {
-      console.log('Can only target fogged tiles with the Ring of True Seeing!')
+    if (!tile) {
+      console.log('Invalid tile position for Ring of True Seeing!')
       return false
     }
     
-    // Remove fog from the tile
-    tile.fogged = false
-    console.log(`Ring of True Seeing removes fog from tile at (${x}, ${y})`)
+    // Check if tile has fog to remove
+    const hadFog = tile.fogged
+    if (hadFog) {
+      // Remove fog from the tile
+      tile.fogged = false
+      console.log(`Ring of True Seeing removes fog from tile at (${x}, ${y})`)
+    } else {
+      console.log(`Ring of True Seeing used on tile at (${x}, ${y}) but there was no fog to remove`)
+    }
     
     // Consume ring charge or remove if no charges left
     const itemIndex = (this.state as any).ringItemIndex

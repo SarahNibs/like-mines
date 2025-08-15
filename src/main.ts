@@ -66,7 +66,7 @@ function updateUI() {
   levelInfoEl.textContent = `Level ${state.run.currentLevel} / ${state.run.maxLevel}`
   // Calculate resting bonus for HP line display
   const restingCount = state.run.upgrades.filter(id => id === 'resting').length
-  const restingBonus = restingCount > 0 ? ` | Resting: +${restingCount * 3}` : ''
+  const restingBonus = restingCount > 0 ? ` | Resting: +${restingCount * 2}` : ''
   hpInfoEl.textContent = `HP: ${state.run.hp} / ${state.run.maxHp}${restingBonus}`
   goldInfoEl.textContent = `Gold: ${state.run.gold} | Loot: +${state.run.loot}`
   // Calculate effective stats including temporary buffs
