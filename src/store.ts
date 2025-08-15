@@ -290,7 +290,7 @@ class GameStore {
     } else if (result.triggerShop) {
       console.log(result.message)
       this.setState({ run: result.updatedRun })
-      this.openShop() // Call after setState to ensure run state is updated first
+      this.openShop().catch(console.error) // Call after setState to ensure run state is updated first
     } else if (result.playerDied) {
       console.log(result.message)
       this.setState({ 
@@ -879,65 +879,77 @@ class GameStore {
   }
 
   // Shop functionality
-  openShop(): void {
-    // Generate items and upgrades with costs scaling by level and Traders bonus
-    import('./items').then(({ SHOP_ITEMS }) => {
-      import('./upgrades').then(({ getAvailableUpgrades }) => {
-        // Base costs based on shop number (shops appear on levels 3, 6, 9, 12, 15, 18)
-        const level = this.state.run.currentLevel
-        const shopNumber = Math.floor(level / 3) // 1st shop (level 3) = 1, 2nd shop (level 6) = 2, etc.
-        
-        // Count Traders upgrades for additional items
-        const tradersCount = this.state.run.upgrades.filter(id => id === 'traders').length
-        const baseItemCount = 5
-        const totalItemCount = baseItemCount + tradersCount
-        
-        // Generate item costs: Level 3: 2,3,4,5 / Level 6: 3,4,5,6 / Level 9: 4,5,6,7 etc.
-        const baseItemCost = 1 + shopNumber // Level 3 = shop 1, base cost 2. Level 6 = shop 2, base cost 3.
-        const itemCosts = []
-        for (let i = 0; i < totalItemCount; i++) {
-          const extraCost = i >= baseItemCount ? i - baseItemCount + 1 : 0 // Traders extra items cost +1 more
-          itemCosts.push(baseItemCost + i + extraCost)
-        }
-        
-        // Generate upgrade costs: Level 3: 7 / Level 6: 8 / Level 9: 9 etc.
-        const baseUpgradeCost = 6 + shopNumber // Level 3 = shop 1, upgrade cost 7. Level 6 = shop 2, upgrade cost 8.
-        const totalUpgradeCount = 1 + tradersCount
-        const upgradeCosts = []
-        for (let i = 0; i < totalUpgradeCount; i++) {
-          upgradeCosts.push(baseUpgradeCost + (i > 0 ? i : 0))
-        }
-        
-        const shopItems = []
-        
-        // Add random items
-        for (let i = 0; i < totalItemCount; i++) {
-          const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
-          shopItems.push({
-            item: randomItem,
-            cost: itemCosts[i],
-            isUpgrade: false
-          })
-        }
-        
-        // Add random upgrades
-        const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
-        for (let i = 0; i < totalUpgradeCount && i < availableUpgrades.length; i++) {
-          const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
-          shopItems.push({
-            item: randomUpgrade,
-            cost: upgradeCosts[i],
-            isUpgrade: true
-          })
-        }
-        
-        console.log('Shop opened with items:', shopItems)
-        this.setState({
-          shopOpen: true,
-          shopItems
+  async openShop(): Promise<void> {
+    try {
+      console.log('openShop() called - starting imports')
+      
+      // Generate items and upgrades with costs scaling by level and Traders bonus
+      const { SHOP_ITEMS } = await import('./items')
+      const { getAvailableUpgrades } = await import('./upgrades')
+      
+      console.log('Imports successful, generating shop content')
+      
+      // Base costs based on shop number (shops appear on levels 3, 6, 9, 12, 15, 18)
+      const level = this.state.run.currentLevel
+      const shopNumber = Math.floor(level / 3) // 1st shop (level 3) = 1, 2nd shop (level 6) = 2, etc.
+      
+      // Count Traders upgrades for additional items
+      const tradersCount = this.state.run.upgrades.filter(id => id === 'traders').length
+      const baseItemCount = 5
+      const totalItemCount = baseItemCount + tradersCount
+      
+      // Generate item costs: Level 3: 2,3,4,5 / Level 6: 3,4,5,6 / Level 9: 4,5,6,7 etc.
+      const baseItemCost = 1 + shopNumber // Level 3 = shop 1, base cost 2. Level 6 = shop 2, base cost 3.
+      const itemCosts = []
+      for (let i = 0; i < totalItemCount; i++) {
+        const extraCost = i >= baseItemCount ? i - baseItemCount + 1 : 0 // Traders extra items cost +1 more
+        itemCosts.push(baseItemCost + i + extraCost)
+      }
+      
+      // Generate upgrade costs: Level 3: 7 / Level 6: 8 / Level 9: 9 etc.
+      const baseUpgradeCost = 6 + shopNumber // Level 3 = shop 1, upgrade cost 7. Level 6 = shop 2, upgrade cost 8.
+      const totalUpgradeCount = 1 + tradersCount
+      const upgradeCosts = []
+      for (let i = 0; i < totalUpgradeCount; i++) {
+        upgradeCosts.push(baseUpgradeCost + (i > 0 ? i : 0))
+      }
+      
+      const shopItems = []
+      
+      // Add random items
+      for (let i = 0; i < totalItemCount; i++) {
+        const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
+        shopItems.push({
+          item: randomItem,
+          cost: itemCosts[i],
+          isUpgrade: false
         })
+      }
+      
+      // Add random upgrades
+      const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
+      for (let i = 0; i < totalUpgradeCount && i < availableUpgrades.length; i++) {
+        const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
+        shopItems.push({
+          item: randomUpgrade,
+          cost: upgradeCosts[i],
+          isUpgrade: true
+        })
+      }
+      
+      console.log('Shop opened with items:', shopItems)
+      console.log('Current state before setState:', { shopOpen: this.state.shopOpen })
+      
+      this.setState({
+        shopOpen: true,
+        shopItems
       })
-    })
+      
+      console.log('setState called, new state should be:', { shopOpen: true, itemCount: shopItems.length })
+      console.log('Actual state after setState:', { shopOpen: this.state.shopOpen, itemCount: this.state.shopItems.length })
+    } catch (error) {
+      console.error('Error opening shop:', error)
+    }
   }
 
   // Buy item from shop
