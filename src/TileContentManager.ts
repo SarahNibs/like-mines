@@ -417,7 +417,8 @@ export class TileContentManager {
   // Check if inventory has space
   private hasInventorySpace(run: RunState): boolean {
     const maxSlots = 3 + run.upgrades.filter(id => id === 'bag').length
-    return run.inventory.length < maxSlots
+    const currentItems = run.inventory.filter(item => item !== null).length
+    return currentItems < maxSlots
   }
   
   // Build message for monster fight results

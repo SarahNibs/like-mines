@@ -408,14 +408,16 @@ export class InventoryManager {
   // Check if inventory has space
   hasInventorySpace(run: RunState): boolean {
     const maxSlots = 3 + run.upgrades.filter(id => id === 'bag').length
-    return run.inventory.length < maxSlots
+    const currentItems = run.inventory.filter(item => item !== null).length
+    return currentItems < maxSlots
   }
   
   // Get inventory capacity
   getInventoryCapacity(run: RunState): { current: number; max: number } {
     const maxSlots = 3 + run.upgrades.filter(id => id === 'bag').length
+    const currentItems = run.inventory.filter(item => item !== null).length
     return {
-      current: run.inventory.length,
+      current: currentItems,
       max: maxSlots
     }
   }
