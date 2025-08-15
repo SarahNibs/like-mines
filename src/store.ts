@@ -310,15 +310,14 @@ class GameStore {
 
   // Use item from inventory
   useInventoryItem(index: number): void {
-    const state = this.getState()
-    const item = state.run.inventory[index]
+    const item = this.state.run.inventory[index]
     if (!item) return
     
     // Handle special items
     if (item.id === 'crystal-ball') {
       // Remove the crystal ball BEFORE revealing the tile to free up inventory space
-      removeItemFromInventory(state.run, index)
-      this.setState({ run: { ...state.run } })
+      removeItemFromInventory(this.state.run, index)
+      this.setState({ run: { ...this.state.run } })
       this.useCrystalBall()
       return // Exit early to avoid removing the item again
     } else if (item.id === 'transmute') {
@@ -329,22 +328,22 @@ class GameStore {
       return // Don't consume the item yet
     } else if (item.id === 'ward') {
       // Stack ward bonuses
-      state.run.temporaryBuffs.ward = (state.run.temporaryBuffs.ward || 0) + 4
-      if (!state.run.upgrades.includes('ward-temp')) {
-        state.run.upgrades.push('ward-temp') // Add to upgrades list for display
+      this.state.run.temporaryBuffs.ward = (this.state.run.temporaryBuffs.ward || 0) + 4
+      if (!this.state.run.upgrades.includes('ward-temp')) {
+        this.state.run.upgrades.push('ward-temp') // Add to upgrades list for display
       }
-      console.log(`Ward activated! +4 defense (total: +${state.run.temporaryBuffs.ward}) for your next fight.`)
+      console.log(`Ward activated! +4 defense (total: +${this.state.run.temporaryBuffs.ward}) for your next fight.`)
     } else if (item.id === 'blaze') {
       // Stack blaze bonuses
-      state.run.temporaryBuffs.blaze = (state.run.temporaryBuffs.blaze || 0) + 5
-      if (!state.run.upgrades.includes('blaze-temp')) {
-        state.run.upgrades.push('blaze-temp') // Add to upgrades list for display
+      this.state.run.temporaryBuffs.blaze = (this.state.run.temporaryBuffs.blaze || 0) + 5
+      if (!this.state.run.upgrades.includes('blaze-temp')) {
+        this.state.run.upgrades.push('blaze-temp') // Add to upgrades list for display
       }
-      console.log(`Blaze activated! +5 attack (total: +${state.run.temporaryBuffs.blaze}) for your next fight.`)
+      console.log(`Blaze activated! +5 attack (total: +${this.state.run.temporaryBuffs.blaze}) for your next fight.`)
     } else if (item.id === 'protection') {
       // Stack protection charges
-      state.run.temporaryBuffs.protection = (state.run.temporaryBuffs.protection || 0) + 1
-      console.log(`Protection activated! Next ${state.run.temporaryBuffs.protection} opponent/neutral reveal(s) won't end your turn.`)
+      this.state.run.temporaryBuffs.protection = (this.state.run.temporaryBuffs.protection || 0) + 1
+      console.log(`Protection activated! Next ${this.state.run.temporaryBuffs.protection} opponent/neutral reveal(s) won't end your turn.`)
     } else if (item.id === 'clue') {
       // Grant additional clue
       this.grantAdditionalClue()
@@ -361,12 +360,12 @@ class GameStore {
       this.useRing(index)
       return // Don't consume the item yet
     } else {
-      const message = applyItemEffect(state.run, item)
+      const message = applyItemEffect(this.state.run, item)
       console.log(message)
     }
     
-    removeItemFromInventory(state.run, index)
-    this.setState({ run: { ...state.run } })
+    removeItemFromInventory(this.state.run, index)
+    this.setState({ run: { ...this.state.run } })
   }
 
   // Whistle functionality - redistribute all monsters to random unrevealed tiles
@@ -482,10 +481,9 @@ class GameStore {
 
   // Grant additional clue functionality
   private grantAdditionalClue(): void {
-    const state = this.getState()
-    const newClue = generateClue(state.board, state.run.upgrades)
+    const newClue = generateClue(this.state.board, this.state.run.upgrades)
     this.setState({
-      clues: [...state.clues, newClue]
+      clues: [...this.state.clues, newClue]
     })
   }
 
@@ -500,17 +498,16 @@ class GameStore {
 
   // Handle transmute tile click
   transmuteTileAt(x: number, y: number): boolean {
-    const state = this.getState()
-    if (!state.transmuteMode) return false
+    if (!this.state.transmuteMode) return false
     
-    const tile = getTileAt(state.board, x, y)
+    const tile = getTileAt(this.state.board, x, y)
     if (!tile || tile.revealed) {
       console.log('Can only transmute unrevealed tiles!')
       // Still consume the item even on invalid attempts
-      const itemIndex = (state as any).transmuteItemIndex
-      removeItemFromInventory(state.run, itemIndex)
+      const itemIndex = (this.state as any).transmuteItemIndex
+      removeItemFromInventory(this.state.run, itemIndex)
       this.setState({
-        run: { ...state.run },
+        run: { ...this.state.run },
         transmuteMode: false,
         transmuteItemIndex: undefined
       })
@@ -518,13 +515,13 @@ class GameStore {
     }
     
     // Always consume the transmute item, regardless of success/failure
-    const itemIndex = (state as any).transmuteItemIndex
-    removeItemFromInventory(state.run, itemIndex)
+    const itemIndex = (this.state as any).transmuteItemIndex
+    removeItemFromInventory(this.state.run, itemIndex)
     
     if (tile.owner === 'player') {
       console.log('Tile is already yours! Transmute consumed anyway.')
       this.setState({
-        run: { ...state.run },
+        run: { ...this.state.run },
         transmuteMode: false,
         transmuteItemIndex: undefined
       })
@@ -537,9 +534,9 @@ class GameStore {
     
     // Update board tile counts
     if (oldOwner === 'opponent') {
-      state.board.opponentTilesTotal--
+      this.state.board.opponentTilesTotal--
     }
-    state.board.playerTilesTotal++
+    this.state.board.playerTilesTotal++
     
     console.log(`Transmuted ${oldOwner} tile at (${x}, ${y}) to player tile!`)
     
@@ -548,8 +545,8 @@ class GameStore {
     
     // Exit transmute mode (item already consumed above)
     this.setState({
-      board: { ...state.board },
-      run: { ...state.run },
+      board: { ...this.state.board },
+      run: { ...this.state.run },
       transmuteMode: false,
       transmuteItemIndex: undefined
     })
@@ -1066,8 +1063,7 @@ class GameStore {
 
   // Show discard confirmation widget
   showDiscardConfirmation(index: number): void {
-    const state = this.getState()
-    const item = state.run.inventory[index]
+    const item = this.state.run.inventory[index]
     if (!item) return
     
     this.setState({

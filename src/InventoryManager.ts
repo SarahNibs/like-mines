@@ -186,7 +186,6 @@ export class InventoryManager {
   private useWhistle(context: InventoryContext): InventoryItemResult {
     const { board } = context
     const monsters = []
-    const originalMonsterPositions = new Set<string>()
     
     // Find all monsters on unrevealed tiles and collect their data
     for (let y = 0; y < board.height; y++) {
@@ -194,7 +193,6 @@ export class InventoryManager {
         const tile = board.tiles[y][x]
         if (tile.content === 'monster' && !tile.revealed && tile.monsterData) {
           monsters.push(tile.monsterData)
-          originalMonsterPositions.add(`${x},${y}`)
           // Clear the monster from this tile
           tile.content = 'empty'
           tile.monsterData = undefined
@@ -212,13 +210,12 @@ export class InventoryManager {
       }
     }
     
-    // Find all unrevealed tiles that can hold monsters (excluding original positions)
+    // Find all unrevealed tiles that can hold monsters
     const availableTiles = []
     for (let y = 0; y < board.height; y++) {
       for (let x = 0; x < board.width; x++) {
         const tile = board.tiles[y][x]
-        const posKey = `${x},${y}`
-        if (!tile.revealed && tile.content === 'empty' && !originalMonsterPositions.has(posKey)) {
+        if (!tile.revealed && tile.content === 'empty') {
           availableTiles.push({ x, y })
         }
       }
