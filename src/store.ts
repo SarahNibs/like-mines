@@ -9,6 +9,7 @@ class GameStore {
   private observers: Array<() => void> = []
   private ai: AIOpponent
   private aiTurnTimeout: number | null = null
+  private boardProgressionTimeout: number | null = null
   private pendingUpgradeChoice: boolean = false
 
   constructor() {
@@ -152,9 +153,9 @@ class GameStore {
       clearTimeout(this.aiTurnTimeout)
     }
     
-    this.aiTurnTimeout = window.setTimeout(() => {
+    this.aiTurnTimeout = setTimeout(() => {
       this.executeAITurn()
-    }, 1000) // 1 second delay
+    }, 1000) as any // 1 second delay
   }
 
   // Execute AI turn
@@ -204,9 +205,13 @@ class GameStore {
     }
     
     // Schedule transition to next level after delay
-    setTimeout(() => {
+    if (this.boardProgressionTimeout) {
+      clearTimeout(this.boardProgressionTimeout)
+    }
+    this.boardProgressionTimeout = setTimeout(() => {
       this.progressToNextBoard()
-    }, 2000) // 2 second delay to show victory
+      this.boardProgressionTimeout = null
+    }, 2000) as any // 2 second delay to show victory
   }
 
   // Handle board lost (AI revealed all their tiles first)
@@ -1203,9 +1208,11 @@ class GameStore {
 
   // Choose one of the upgrade options
   chooseUpgrade(index: number): void {
-    if (!this.state.upgradeChoice || index >= this.state.upgradeChoice.choices.length) return
+    if (!this.state.upgradeChoice || index < 0 || index >= this.state.upgradeChoice.choices.length) return
     
     const chosenUpgrade = this.state.upgradeChoice.choices[index]
+    if (!chosenUpgrade) return
+    
     this.applyUpgrade(chosenUpgrade.id)
     
     // Check if we need to trigger AI turn after choosing upgrade
@@ -1247,6 +1254,16 @@ class GameStore {
   selectCharacter(characterId: string): void {
     if (this.state.gameStatus !== 'character-select') {
       return
+    }
+    
+    // Clear any existing timeouts
+    if (this.aiTurnTimeout) {
+      clearTimeout(this.aiTurnTimeout)
+      this.aiTurnTimeout = null
+    }
+    if (this.boardProgressionTimeout) {
+      clearTimeout(this.boardProgressionTimeout)
+      this.boardProgressionTimeout = null
     }
     
     // Create character-specific run state
@@ -1337,6 +1354,12 @@ class GameStore {
     if (this.aiTurnTimeout) {
       clearTimeout(this.aiTurnTimeout)
       this.aiTurnTimeout = null
+    }
+    
+    // Clear any pending board progression
+    if (this.boardProgressionTimeout) {
+      clearTimeout(this.boardProgressionTimeout)
+      this.boardProgressionTimeout = null
     }
     
     // Reset AI for new game
