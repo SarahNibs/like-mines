@@ -8,6 +8,8 @@ import { GameFlowManager, TileRevealResult, BoardProgressionResult, TurnEndResul
 import { ShopManager } from './ShopManager'
 import { TrophyManager } from './TrophyManager'
 import { ToolModeManager } from './ToolModeManager'
+import { UIStateManager } from './UIStateManager'
+import { AIManager } from './AIManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -20,6 +22,8 @@ class GameStore {
   private shopManager: ShopManager
   private trophyManager: TrophyManager
   private toolModeManager: ToolModeManager
+  private uiStateManager: UIStateManager
+  private aiManager: AIManager
   private pendingAITurn: boolean = false
 
   constructor() {
@@ -32,6 +36,8 @@ class GameStore {
     this.shopManager = new ShopManager()
     this.trophyManager = new TrophyManager()
     this.toolModeManager = new ToolModeManager()
+    this.uiStateManager = new UIStateManager()
+    this.aiManager = new AIManager(this.ai)
   }
 
   // Get current state
@@ -88,12 +94,11 @@ class GameStore {
     // Apply state changes from GameFlowManager
     this.setState(result.newGameState)
     
-    // Execute tile content actions based on the result
-    const tileContentResult = this.handleTileContent(getTileAt(this.state.board, x, y))
+    // Force board update to ensure any direct modifications (like RICH effects) are reflected
+    this.setState({ board: { ...this.state.board } })
     
     // Handle player death
     if (result.playerDied) {
-      this.executeTileContentActions(tileContentResult)
       return true
     }
     
@@ -101,8 +106,8 @@ class GameStore {
     if (result.shouldPauseForUpgrade) {
       // Remember if AI should turn after upgrade choice
       this.pendingAITurn = result.deferredAITurn
-      // Execute the upgrade choice action
-      this.executeTileContentActions(tileContentResult)
+      // Trigger the upgrade choice UI
+      this.triggerUpgradeChoice()
       return true
     }
     
@@ -110,13 +115,10 @@ class GameStore {
     if (result.shouldPauseForShop) {
       // Remember if AI should turn after shop closes
       this.pendingAITurn = result.deferredAITurn
-      // Execute the shop action
-      this.executeTileContentActions(tileContentResult)
+      // Trigger the shop opening
+      this.openShop().catch(console.error)
       return true
     }
-    
-    // Execute normal tile content actions
-    this.executeTileContentActions(tileContentResult)
     
     // Handle board completion
     if (this.state.boardStatus === 'won') {
@@ -131,11 +133,15 @@ class GameStore {
   }
 
 
-  // Schedule AI turn with delay for better UX
+  // Schedule AI turn with delay for better UX (delegated to AIManager)
   private scheduleAITurn(): void {
-    this.gameFlowManager.scheduleAITurn(() => {
-      this.executeAITurn()
-    }, 1000)
+    this.aiManager.scheduleTurn(this.state.board, (result) => {
+      if (result.success) {
+        this.executeAITurn()
+      } else {
+        console.log('AI has no valid moves available')
+      }
+    })
   }
 
   // Execute AI turn
@@ -209,8 +215,8 @@ class GameStore {
       return
     }
     
-    // Reset AI for new board
-    this.ai.resetForNewBoard()
+    // Reset AI for new board (delegated to AIManager)
+    this.aiManager.resetForNewBoard()
     
     this.setState(result.newGameState)
   }
@@ -318,7 +324,24 @@ class GameStore {
     
     // Handle crystal ball specific logic
     if (item.id === 'crystal-ball' && result.success) {
-      this.handleCrystalBallResult(result)
+      console.log(result.message)
+      
+      // Extract tile position from message and reveal it
+      const match = result.message.match(/\((\d+), (\d+)\)/)
+      if (match) {
+        const x = parseInt(match[1])
+        const y = parseInt(match[2])
+        const tile = getTileAt(this.state.board, x, y)
+        if (tile && !tile.revealed) {
+          tile.revealed = true
+          console.log(`Crystal Ball revealed tile at (${x}, ${y})`)
+        }
+      }
+      
+      this.setState({ 
+        run: result.updatedRun,
+        board: { ...this.state.board } // Force re-render since tile was revealed
+      })
       return
     }
     
@@ -374,15 +397,13 @@ class GameStore {
     })
   }
 
-  // Start transmute mode (delegated to ToolModeManager)
+  // Start transmute mode
   private startTransmuteMode(itemIndex: number): void {
-    const result = this.toolModeManager.startTransmuteMode(this.state.run.inventory[itemIndex])
-    if (result.success) {
-      this.setState({ 
-        transmuteMode: true,
-        transmuteItemIndex: itemIndex
-      })
-    }
+    console.log('Transmute mode activated.')
+    this.setState({ 
+      transmuteMode: true,
+      transmuteItemIndex: itemIndex
+    })
   }
 
   // Handle transmute tile click (delegated to ToolModeManager)
@@ -390,7 +411,7 @@ class GameStore {
     if (!this.state.transmuteMode) return false
     
     const itemIndex = (this.state as any).transmuteItemIndex
-    const result = this.toolModeManager.useTransmute(this.state.board, this.state.run, x, y)
+    const result = this.toolModeManager.transmuteTileAt(this.state.board, x, y, this.state.run)
     
     // Always consume the item and exit transmute mode
     removeItemFromInventory(this.state.run, itemIndex)
@@ -400,7 +421,7 @@ class GameStore {
       this.updateDetectorScans()
       
       this.setState({
-        board: result.updatedBoard!,
+        board: { ...this.state.board },
         run: { ...this.state.run },
         transmuteMode: false,
         transmuteItemIndex: undefined
@@ -427,66 +448,50 @@ class GameStore {
 
   // Start detector mode
   private startDetectorMode(itemIndex: number): void {
-    console.log('Detector activated! Click any unrevealed tile to see adjacent tile info.')
+    console.log('Detector mode activated.')
     this.setState({ 
       detectorMode: true,
-      detectorItemIndex: itemIndex // Store which inventory slot to consume
+      detectorItemIndex: itemIndex
     })
   }
 
-  // Handle detector tile click
+  // Handle detector tile click (delegated to ToolModeManager)
   detectTileAt(x: number, y: number): boolean {
     if (!this.state.detectorMode) return false
     
-    const tile = getTileAt(this.state.board, x, y)
-    if (!tile) {
-      console.log('Invalid tile position!')
-      return false
-    }
-    
-    // Count all tiles in 3x3 area including the middle tile
-    let playerAdjacent = 0
-    let opponentAdjacent = 0
-    let neutralAdjacent = 0
-    
-    // Check all 9 positions in 3x3 area (including center)
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const adjTile = getTileAt(this.state.board, x + dx, y + dy)
-        if (adjTile) {
-          if (adjTile.owner === 'player') playerAdjacent++
-          else if (adjTile.owner === 'opponent') opponentAdjacent++
-          else if (adjTile.owner === 'neutral') neutralAdjacent++
-        }
-      }
-    }
-    
-    // Store scan results on the tile
-    tile.detectorScan = {
-      playerAdjacent,
-      opponentAdjacent,
-      neutralAdjacent
-    }
-    
-    console.log(`Detector scan at (${x}, ${y}): ${playerAdjacent} player, ${opponentAdjacent} opponent, ${neutralAdjacent} neutral adjacent tiles`)
-    
-    // Consume the detector item and exit detector mode
     const itemIndex = (this.state as any).detectorItemIndex
+    const result = this.toolModeManager.detectTileAt(this.state.board, x, y)
+    
+    // Always consume the item and exit detector mode
     removeItemFromInventory(this.state.run, itemIndex)
     
-    this.setState({
-      board: { ...this.state.board },
-      run: { ...this.state.run },
-      detectorMode: false,
-      detectorItemIndex: undefined
-    })
-    
-    return true
+    if (result.success) {
+      // Apply scan results to the tile
+      const tile = getTileAt(this.state.board, x, y)
+      if (tile && result.scanData) {
+        tile.detectorScan = result.scanData
+      }
+      
+      this.setState({
+        board: { ...this.state.board },
+        run: { ...this.state.run },
+        detectorMode: false,
+        detectorItemIndex: undefined
+      })
+      return true
+    } else {
+      this.setState({
+        run: { ...this.state.run },
+        detectorMode: false,
+        detectorItemIndex: undefined
+      })
+      return false
+    }
   }
 
   // Cancel detector mode
   cancelDetector(): void {
-    console.log('Detector cancelled.')
+    console.log('Detector targeting cancelled.')
     this.setState({
       detectorMode: false,
       detectorItemIndex: undefined
@@ -495,23 +500,33 @@ class GameStore {
 
   // Start key mode
   private startKeyMode(itemIndex: number): void {
-    console.log('Key activated! Click any locked tile to unlock it.')
+    console.log('Key mode activated.')
     this.setState({ 
       keyMode: true,
-      keyItemIndex: itemIndex // Store which inventory slot to consume
+      keyItemIndex: itemIndex
     })
   }
 
-  // Handle key tile click
+
+  // Handle key tile click (delegated to ToolModeManager)
   useKeyAt(x: number, y: number): boolean {
     if (!this.state.keyMode) return false
     
-    const tile = getTileAt(this.state.board, x, y)
-    if (!tile || tile.revealed || !tile.chainData || !tile.chainData.isBlocked) {
-      console.log('Can only use keys on locked tiles!')
-      // Still consume the key even on invalid attempts
-      const itemIndex = (this.state as any).keyItemIndex
-      removeItemFromInventory(this.state.run, itemIndex)
+    const itemIndex = (this.state as any).keyItemIndex
+    const result = this.toolModeManager.useKeyAt(this.state.board, x, y)
+    
+    // Always consume the item and exit key mode
+    removeItemFromInventory(this.state.run, itemIndex)
+    
+    if (result.success) {
+      this.setState({
+        board: { ...this.state.board },
+        run: { ...this.state.run },
+        keyMode: false,
+        keyItemIndex: undefined
+      })
+      return true
+    } else {
       this.setState({
         run: { ...this.state.run },
         keyMode: false,
@@ -519,38 +534,11 @@ class GameStore {
       })
       return false
     }
-    
-    // Always consume the key item
-    const itemIndex = (this.state as any).keyItemIndex
-    removeItemFromInventory(this.state.run, itemIndex)
-    
-    // Find and remove the corresponding key tile
-    const requiredTileX = tile.chainData.requiredTileX
-    const requiredTileY = tile.chainData.requiredTileY
-    const keyTile = getTileAt(this.state.board, requiredTileX, requiredTileY)
-    
-    if (keyTile && keyTile.chainData) {
-      // Remove chain data from both tiles
-      keyTile.chainData = undefined
-    }
-    tile.chainData = undefined
-    
-    console.log(`Key used! Unlocked tile at (${x}, ${y}) and removed corresponding key.`)
-    
-    // Exit key mode
-    this.setState({
-      board: { ...this.state.board },
-      run: { ...this.state.run },
-      keyMode: false,
-      keyItemIndex: undefined
-    })
-    
-    return true
   }
 
   // Cancel key mode
   cancelKey(): void {
-    console.log('Key cancelled.')
+    console.log('Key targeting cancelled.')
     this.setState({
       keyMode: false,
       keyItemIndex: undefined
@@ -559,56 +547,33 @@ class GameStore {
 
   // Start staff targeting mode
   private startStaffMode(itemIndex: number): void {
-    console.log('Staff of Fireballs activated! Click any monster to attack it.')
+    console.log('Staff targeting mode activated.')
     this.setState({ 
       staffMode: true,
-      staffItemIndex: itemIndex // Store which inventory slot to consume
+      staffItemIndex: itemIndex
     })
   }
 
-  // Handle staff monster targeting
+  // Handle staff monster targeting (delegated to ToolModeManager)
   useStaffAt(x: number, y: number): boolean {
     if (!this.state.staffMode) return false
     
-    const tile = getTileAt(this.state.board, x, y)
-    if (!tile || !tile.monsterData) {
-      console.log('Can only target monsters with the Staff of Fireballs!')
-      return false
-    }
+    const itemIndex = (this.state as any).staffItemIndex
+    const staff = this.state.run.inventory[itemIndex]
+    const result = this.toolModeManager.useStaffAt(this.state.board, x, y, this.state.run)
     
-    // Deal 6 damage bypassing defense
-    const damage = 6
-    tile.monsterData.hp -= damage
-    console.log(`Staff of Fireballs hits ${tile.monsterData.name} for ${damage} damage! (${tile.monsterData.hp} HP remaining)`)
-    
-    // Remove monster if killed and award loot/Rich effects
-    if (tile.monsterData.hp <= 0) {
-      const monsterName = tile.monsterData.name
-      console.log(`${monsterName} is defeated!`)
-      
-      // Award loot bonus for defeating the monster
-      this.state.run.gold += this.state.run.loot
-      
+    if (result.success && result.monsterDefeated) {
       // RICH upgrade: add gold items to adjacent tiles when defeating monsters
       if (this.state.run.upgrades.includes('rich')) {
         const richResult = this.tileContentManager.applyRichEffect(this.state.board, x, y, this.state.run)
         if (richResult.success) {
           console.log(richResult.message)
-          this.setState({ board: { ...this.state.board } })
         }
       }
-      
-      console.log(`Staff defeated ${monsterName}! Gained ${this.state.run.loot} gold.`)
-      
-      tile.content = TileContent.Empty
-      tile.monsterData = undefined
     }
     
-    // Consume staff charge or remove if no charges left
-    const itemIndex = (this.state as any).staffItemIndex
-    const staff = this.state.run.inventory[itemIndex]
-    
-    if (staff && staff.multiUse) {
+    // Handle staff charge management
+    if (staff && staff.multiUse && result.success) {
       staff.multiUse.currentUses -= 1
       console.log(`Staff of Fireballs: ${staff.multiUse.currentUses}/${staff.multiUse.maxUses} uses remaining`)
       
@@ -627,7 +592,7 @@ class GameStore {
       staffItemIndex: undefined
     })
     
-    return true
+    return result.success
   }
 
   // Cancel staff mode
@@ -648,50 +613,40 @@ class GameStore {
     })
   }
 
-  // Handle ring fog removal targeting
+  // Handle ring fog removal targeting (delegated to ToolModeManager)
   useRingAt(x: number, y: number): boolean {
     if (!this.state.ringMode) return false
     
-    const tile = getTileAt(this.state.board, x, y)
-    if (!tile) {
-      console.log('Invalid tile position for Ring of True Seeing!')
-      return false
-    }
-    
-    // Check if tile has fog to remove
-    const hadFog = tile.fogged
-    if (hadFog) {
-      // Remove fog from the tile
-      tile.fogged = false
-      console.log(`Ring of True Seeing removes fog from tile at (${x}, ${y})`)
-    } else {
-      console.log(`Ring of True Seeing used on tile at (${x}, ${y}) but there was no fog to remove`)
-    }
-    
-    // Consume ring charge or remove if no charges left
     const itemIndex = (this.state as any).ringItemIndex
-    const ring = this.state.run.inventory[itemIndex]
+    const result = this.toolModeManager.useRingAt(this.state.board, x, y)
     
-    if (ring && ring.multiUse) {
-      ring.multiUse.currentUses--
-      console.log(`Ring of True Seeing has ${ring.multiUse.currentUses} charges remaining`)
+    console.log(result.message)
+    
+    if (result.inventoryModified) {
+      // Consume ring charge or remove if no charges left
+      const ring = this.state.run.inventory[itemIndex]
       
-      if (ring.multiUse.currentUses <= 0) {
-        // Remove the ring from inventory when no charges left
-        this.state.run.inventory[itemIndex] = null
-        console.log('Ring of True Seeing is depleted and removed from inventory')
+      if (ring && ring.multiUse) {
+        ring.multiUse.currentUses--
+        console.log(`Ring of True Seeing has ${ring.multiUse.currentUses} charges remaining`)
+        
+        if (ring.multiUse.currentUses <= 0) {
+          // Remove the ring from inventory when no charges left
+          this.state.run.inventory[itemIndex] = null
+          console.log('Ring of True Seeing is depleted and removed from inventory')
+        }
       }
+      
+      // Exit ring mode
+      this.setState({
+        board: { ...this.state.board },
+        run: { ...this.state.run },
+        ringMode: false,
+        ringItemIndex: undefined
+      })
     }
     
-    // Exit ring mode
-    this.setState({
-      board: { ...this.state.board },
-      run: { ...this.state.run },
-      ringMode: false,
-      ringItemIndex: undefined
-    })
-    
-    return true
+    return result.success
   }
 
   // Cancel ring mode
@@ -741,9 +696,10 @@ class GameStore {
     }
   }
 
-  // Shop functionality (delegated to ShopManager)
+  // Shop functionality (delegated to ShopManager and UIStateManager)
   async openShop(): Promise<void> {
     const shopItems = await this.shopManager.openShop(this.state)
+    this.uiStateManager.openShop()
     this.setState({
       shopOpen: true,
       shopItems: shopItems
@@ -799,7 +755,6 @@ class GameStore {
       })
     } else {
       // Try to add item to inventory
-      const { addItemToInventory } = require('./items')
       const success = addItemToInventory(run, shopItem.item)
       if (!success) {
         console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`)
@@ -819,10 +774,12 @@ class GameStore {
     return true
   }
 
-  // Close shop
+  // Close shop (delegated to UIStateManager)
   closeShop(): void {
     const wasBoardWon = this.state.boardStatus === 'won'
     const shouldTriggerAI = this.pendingAITurn
+    
+    this.uiStateManager.closeShop()
     
     this.setState({
       shopOpen: false,
@@ -896,11 +853,14 @@ class GameStore {
 
   // Rewind methods removed
 
-  // Show discard confirmation widget
+  // Show discard confirmation widget (delegated to UIStateManager)
   showDiscardConfirmation(index: number): void {
     const item = this.state.run.inventory[index]
     if (!item) return
     
+    this.uiStateManager.showDiscardConfirmation(index, item.name)
+    
+    // Update GameState to reflect UIStateManager state
     this.setState({
       pendingDiscard: {
         itemIndex: index,
@@ -909,13 +869,16 @@ class GameStore {
     })
   }
 
-  // Confirm discard from widget
+  // Confirm discard from widget (delegated to UIStateManager)
   confirmDiscard(): void {
-    if (!this.state.pendingDiscard) return
+    const discardConfirmation = this.uiStateManager.getDiscardConfirmation()
+    if (!discardConfirmation) return
     
-    const { itemIndex, itemName } = this.state.pendingDiscard
+    const { itemIndex, itemName } = discardConfirmation
     console.log(`Discarded ${itemName}`)
     removeItemFromInventory(this.state.run, itemIndex)
+    
+    this.uiStateManager.hideDiscardConfirmation()
     
     this.setState({ 
       run: { ...this.state.run },
@@ -923,8 +886,9 @@ class GameStore {
     })
   }
 
-  // Cancel discard from widget
+  // Cancel discard from widget (delegated to UIStateManager)
   cancelDiscard(): void {
+    this.uiStateManager.hideDiscardConfirmation()
     this.setState({ pendingDiscard: null })
   }
 
@@ -1091,8 +1055,8 @@ class GameStore {
     // Reset flags
     this.pendingAITurn = false
     
-    // Reset AI for new game
-    this.ai.resetForNewBoard()
+    // Reset AI for new game (delegated to AIManager)
+    this.aiManager.resetForNewBoard()
     
     const initialState = createInitialGameState()
     initialState.gameStatus = 'character-select' // Start in character selection
