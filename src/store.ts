@@ -2,6 +2,7 @@ import { GameState, getTileAt, TileContent } from './types'
 import { createInitialGameState, createCharacterRunState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect } from './gameLogic'
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
+import { TrophyManager } from './TrophyManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -10,11 +11,13 @@ class GameStore {
   private ai: AIOpponent
   private aiTurnTimeout: number | null = null
   private pendingUpgradeChoice: boolean = false
+  private trophyManager: TrophyManager
 
   constructor() {
     this.state = createInitialGameState()
     this.state.gameStatus = 'character-select' // Start in character selection
     this.ai = new DumbAI()
+    this.trophyManager = new TrophyManager()
   }
 
   // Get current state
@@ -1403,78 +1406,33 @@ class GameStore {
   awardTrophies(): void {
     const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
     const opponentTilesRevealed = this.state.board.opponentTilesRevealed
-    let trophiesEarned = Math.max(0, opponentTilesLeft - 1) // N-1 trophies
     
-    // Perfect board bonus: +10 trophies if opponent revealed 0 tiles
-    const perfectBoardBonus = opponentTilesRevealed === 0 ? 10 : 0
-    trophiesEarned += perfectBoardBonus
+    const result = this.trophyManager.awardTrophies(
+      this.state.run.trophies, 
+      opponentTilesLeft, 
+      opponentTilesRevealed
+    )
     
-    console.log(`Awarding ${trophiesEarned} trophies (${opponentTilesLeft} opponent tiles left)`)
-    if (perfectBoardBonus > 0) {
-      console.log(`Perfect board bonus: +${perfectBoardBonus} trophies!`)
-    }
-    console.log(`Current trophies before awarding:`, this.state.run.trophies.length)
-    
-    // Create new trophies array with existing trophies plus new ones
-    const newTrophies = [...this.state.run.trophies]
-    
-    // Add silver trophies
-    for (let i = 0; i < trophiesEarned; i++) {
-      const trophy = {
-        id: `trophy_${Date.now()}_${i}`,
-        type: 'silver' as const,
-        stolen: false
-      }
-      newTrophies.push(trophy)
-    }
-    
-    console.log(`New trophies array length after adding:`, newTrophies.length)
-    
-    // Update state with new trophies array
     this.setState({
       run: {
         ...this.state.run,
-        trophies: newTrophies
+        trophies: result.newTrophies
       }
     })
-    
-    // Collapse trophies if we have 10 or more silver, using the fresh trophies array
-    this.collapseTrophies(newTrophies)
   }
   
   // Collapse 10 silver trophies into 1 gold trophy
   collapseTrophies(inputTrophies?: any[]): void {
-    let trophies = inputTrophies ? [...inputTrophies] : [...this.state.run.trophies]
-    let silverTrophies = trophies.filter(t => t.type === 'silver' && !t.stolen)
-    let changed = false
+    const trophies = inputTrophies ? [...inputTrophies] : [...this.state.run.trophies]
+    const result = this.trophyManager.collapseTrophies(trophies)
     
-    while (silverTrophies.length >= 10) {
-      // Remove 10 silver trophies
-      for (let i = 0; i < 10; i++) {
-        const silverIndex = trophies.findIndex(t => t.type === 'silver' && !t.stolen)
-        if (silverIndex !== -1) {
-          trophies.splice(silverIndex, 1)
-        }
-      }
-      
-      // Add 1 gold trophy
-      const goldTrophy = {
-        id: `gold_trophy_${Date.now()}`,
-        type: 'gold' as const,
-        stolen: false
-      }
-      trophies.push(goldTrophy)
-      
-      // Update the silver trophies list for next iteration
-      silverTrophies = trophies.filter(t => t.type === 'silver' && !t.stolen)
-      changed = true
-    }
-    
-    if (changed) {
+    // Only update state if trophies actually changed
+    if (result.newTrophies.length !== trophies.length || 
+        JSON.stringify(result.newTrophies) !== JSON.stringify(trophies)) {
       this.setState({
         run: {
           ...this.state.run,
-          trophies: trophies
+          trophies: result.newTrophies
         }
       })
     }
@@ -1482,28 +1440,18 @@ class GameStore {
   
   // Steal a gold trophy when player would die
   stealGoldTrophy(monsterName: string): boolean {
-    const goldTrophyIndex = this.state.run.trophies.findIndex(t => t.type === 'gold' && !t.stolen)
+    const result = this.trophyManager.stealGoldTrophy(this.state.run.trophies, monsterName)
     
-    if (goldTrophyIndex !== -1) {
-      const newTrophies = [...this.state.run.trophies]
-      newTrophies[goldTrophyIndex] = {
-        ...newTrophies[goldTrophyIndex],
-        stolen: true,
-        stolenBy: monsterName
-      }
-      
+    if (result.wasStolen && result.newTrophies) {
       this.setState({
         run: {
           ...this.state.run,
-          trophies: newTrophies
+          trophies: result.newTrophies
         }
       })
-      
-      console.log(`${monsterName} stole a gold trophy!`)
-      return true
     }
     
-    return false
+    return result.wasStolen
   }
 }
 
