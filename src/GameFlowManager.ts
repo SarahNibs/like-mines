@@ -1,207 +1,422 @@
 /**
- * GameFlowManager - Manages high-level game flow and state transitions
- * Extracted from store.ts to isolate game flow concerns
+ * GameFlowManager - Handles core game flow logic including turns, board progression, and game state transitions
  */
 
-import { GameState } from './types'
-import { createCharacterRunState, progressToNextLevel } from './gameLogic'
+import { GameState, Board, RunState, getTileAt, TileContent } from './types'
+import { revealTile, checkBoardStatus, progressToNextLevel } from './gameLogic'
+import { generateClue } from './clues'
+import { DumbAI, AIOpponent } from './ai'
 
-export type GameStatus = 'character-select' | 'playing' | 'opponent-won' | 'run-complete'
-export type GameFlowEvent = 
-  | 'character-selected'
-  | 'board-won' 
-  | 'board-lost'
-  | 'turn-ended'
-  | 'next-board'
-  | 'game-reset'
+export interface BoardProgressionResult {
+  success: boolean
+  newGameState: Partial<GameState>
+  message?: string
+}
 
-export interface GameFlowResult {
-  newState: Partial<GameState> | GameState
-  events: GameFlowEvent[]
-  shouldTriggerAI?: boolean
-  shouldShowShop?: boolean
-  nextBoardDelay?: number
+export interface TileRevealResult {
+  success: boolean
+  newGameState: Partial<GameState>
+  shouldTriggerAI: boolean
+  shouldPauseForUpgrade: boolean
+  shouldPauseForShop: boolean
+  playerDied: boolean
+  deferredAITurn: boolean // True if AI turn should happen after pause resolves
+}
+
+export interface TurnEndResult {
+  success: boolean
+  newGameState: Partial<GameState>
+  shouldTriggerAI: boolean
 }
 
 export class GameFlowManager {
-  
-  // Handle character selection and game start
-  selectCharacter(currentState: GameState, characterId: string): GameFlowResult {
-    if (currentState.gameStatus !== 'character-select') {
-      return { newState: {}, events: [] }
+  private ai: AIOpponent
+  private aiTurnTimeout: number | null = null
+  private boardProgressionTimeout: number | null = null
+  private pendingUpgradeChoice: boolean = false
+
+  constructor() {
+    this.ai = new DumbAI()
+  }
+
+  // Handle tile reveal and all associated game flow logic
+  revealTile(
+    gameState: GameState, 
+    x: number, 
+    y: number, 
+    tileContentHandler: (tile: any) => { triggerUpgradeChoice?: boolean; triggerShop?: boolean; playerDied?: boolean; updatedRun: RunState },
+    bypassRewind: boolean = false
+  ): TileRevealResult {
+    if (gameState.gameStatus !== 'playing' || gameState.currentTurn !== 'player') {
+      return {
+        success: false,
+        newGameState: {},
+        shouldTriggerAI: false,
+        shouldPauseForUpgrade: false,
+        shouldPauseForShop: false,
+        playerDied: false,
+        deferredAITurn: false
+      }
+    }
+    
+    // Block player actions when upgrade choice is pending
+    if (gameState.upgradeChoice || this.pendingUpgradeChoice) {
+      return {
+        success: false,
+        newGameState: {},
+        shouldTriggerAI: false,
+        shouldPauseForUpgrade: false,
+        shouldPauseForShop: false,
+        playerDied: false,
+        deferredAITurn: false
+      }
+    }
+    
+    const tile = getTileAt(gameState.board, x, y)
+    if (!tile || tile.revealed) {
+      return {
+        success: false,
+        newGameState: {},
+        shouldTriggerAI: false,
+        shouldPauseForUpgrade: false,
+        shouldPauseForShop: false,
+        playerDied: false,
+        deferredAITurn: false
+      }
+    }
+    
+    // Check if tile is blocked by a chain
+    if (tile.chainData && tile.chainData.isBlocked) {
+      const requiredTile = getTileAt(gameState.board, tile.chainData.requiredTileX, tile.chainData.requiredTileY)
+      if (requiredTile && !requiredTile.revealed) {
+        console.log('Cannot click this tile - it\'s chained! Must reveal the connected tile first.')
+        return {
+          success: false,
+          newGameState: {},
+          shouldTriggerAI: false,
+          shouldPauseForUpgrade: false,
+          shouldPauseForShop: false,
+          playerDied: false,
+        deferredAITurn: false
+        }
+      }
+    }
+    
+    // Check for Rewind protection on dangerous tiles (unless bypassed with SHIFT)
+    const wouldProtectionActivate = tile.owner !== 'player' && 
+                                   gameState.run.temporaryBuffs.protection && 
+                                   gameState.run.temporaryBuffs.protection > 0
+    
+    const success = revealTile(gameState.board, x, y, 'player')
+    if (!success) {
+      return {
+        success: false,
+        newGameState: {},
+        shouldTriggerAI: false,
+        shouldPauseForUpgrade: false,
+        shouldPauseForShop: false,
+        playerDied: false,
+        deferredAITurn: false
+      }
     }
 
-    try {
-      const newState = createCharacterRunState(characterId)
+    const newBoardStatus = checkBoardStatus(gameState.board)
+    const isPlayerTile = tile.owner === 'player'
+    
+    // Create mutable copy of run for modifications
+    const updatedRun = { ...gameState.run }
+    
+    // Award loot bonus for revealing opponent tiles
+    if (tile.owner === 'opponent') {
+      updatedRun.gold += updatedRun.loot
+    }
+    
+    // RESTING upgrade: heal when revealing neutral tiles
+    if (tile.owner === 'neutral') {
+      const restingCount = updatedRun.upgrades.filter(id => id === 'resting').length
+      if (restingCount > 0) {
+        const healAmount = restingCount * 2
+        updatedRun.hp = Math.min(updatedRun.maxHp, updatedRun.hp + healAmount)
+        console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
+      }
+    }
+    
+    // Handle tile content through provided handler
+    const contentResult = tileContentHandler(tile)
+    const finalRun = contentResult.updatedRun
+    
+    // Check if player died after handling content
+    if (contentResult.playerDied) {
+      return {
+        success: true,
+        newGameState: {
+          board: { ...gameState.board },
+          run: finalRun,
+          gameStatus: 'player-died'
+        },
+        shouldTriggerAI: false,
+        shouldPauseForUpgrade: false,
+        shouldPauseForShop: false,
+        playerDied: true,
+        deferredAITurn: false
+      }
+    }
+    
+    // Determine if this would trigger AI (non-player tile without protection)
+    const hadProtection = finalRun.temporaryBuffs.protection && finalRun.temporaryBuffs.protection > 0
+    const wouldTriggerAI = newBoardStatus === 'in-progress' && !isPlayerTile && !hadProtection
+    
+    // Check if upgrade choice or shop was triggered - pause game until resolved
+    if (contentResult.triggerUpgradeChoice) {
+      this.pendingUpgradeChoice = true
+      
+      // Determine what the turn should be after the upgrade choice
+      let newTurn = 'player'
+      if (newBoardStatus === 'in-progress' && !isPlayerTile && !hadProtection) {
+        newTurn = 'opponent'
+      }
       
       return {
-        newState: {
-          ...newState,
-          gameStatus: 'playing' as GameStatus,
-          selectedCharacter: characterId
+        success: true,
+        newGameState: {
+          board: { ...gameState.board },
+          run: finalRun,
+          currentTurn: newTurn,
+          boardStatus: newBoardStatus
         },
-        events: ['character-selected']
+        shouldTriggerAI: false,
+        shouldPauseForUpgrade: true,
+        shouldPauseForShop: false,
+        playerDied: false,
+        deferredAITurn: wouldTriggerAI
       }
-    } catch (error) {
-      console.error(`Error creating character run state: ${error}`)
-      return { newState: {}, events: [] }
+    }
+
+    if (contentResult.triggerShop) {
+      // Determine what the turn should be after the shop closes
+      let newTurn = 'player'
+      if (newBoardStatus === 'in-progress' && !isPlayerTile && !hadProtection) {
+        newTurn = 'opponent'
+      }
+      
+      return {
+        success: true,
+        newGameState: {
+          board: { ...gameState.board },
+          run: finalRun,
+          currentTurn: newTurn,
+          boardStatus: newBoardStatus
+        },
+        shouldTriggerAI: false,
+        shouldPauseForUpgrade: false,
+        shouldPauseForShop: true,
+        playerDied: false,
+        deferredAITurn: wouldTriggerAI
+      }
+    }
+    
+    // Check if Protection should activate before consuming it
+    
+    // Consume Protection charge on ANY tile reveal (if active)
+    if (hadProtection) {
+      finalRun.temporaryBuffs.protection -= 1
+      console.log(`Protection consumed! ${finalRun.temporaryBuffs.protection} charges remaining.`)
+    }
+    
+    // Player continues turn if they revealed their own tile, or if protection was active
+    let newTurn = 'player'
+    if (newBoardStatus === 'in-progress' && !isPlayerTile && !hadProtection) {
+      // Player revealed opponent/neutral tile without protection - turn ends
+      newTurn = 'opponent'
+    }
+    
+    const newGameState: Partial<GameState> = {
+      board: { ...gameState.board },
+      boardStatus: newBoardStatus,
+      currentTurn: newTurn,
+      run: finalRun
+    }
+
+    // Determine if AI should be triggered
+    const shouldTriggerAI = newBoardStatus === 'in-progress' && newTurn === 'opponent'
+    
+    return {
+      success: true,
+      newGameState,
+      shouldTriggerAI,
+      shouldPauseForUpgrade: false,
+      shouldPauseForShop: false,
+      playerDied: false,
+      deferredAITurn: false
     }
   }
 
-  // Handle end of player turn
-  endTurn(currentState: GameState): GameFlowResult {
-    if (currentState.gameStatus !== 'playing' || currentState.currentTurn !== 'player') {
-      return { newState: {}, events: [] }
+  // Handle board won scenario
+  handleBoardWon(gameState: GameState, trophyAwarder: () => void, progressCallback: () => void): BoardProgressionResult {
+    console.log('Board won! Preparing for next level...')
+    
+    // Award trophies for winning
+    trophyAwarder()
+    
+    // Clear any scheduled AI turns
+    if (this.aiTurnTimeout) {
+      clearTimeout(this.aiTurnTimeout)
+      this.aiTurnTimeout = null
     }
-
+    
+    // Schedule automatic progression to next level
+    this.boardProgressionTimeout = setTimeout(() => {
+      progressCallback()
+    }, 3000) as any // 3 second delay
+    
+    // Prevent timeout from keeping test process alive
+    if (this.boardProgressionTimeout && typeof this.boardProgressionTimeout === 'object' && 'unref' in this.boardProgressionTimeout) {
+      (this.boardProgressionTimeout as any).unref()
+    }
+    
     return {
-      newState: {
+      success: true,
+      newGameState: {
+        boardStatus: 'won'
+      },
+      message: 'Board completed! Progressing to next level...'
+    }
+  }
+
+  // Handle board lost scenario  
+  handleBoardLost(gameState: GameState): BoardProgressionResult {
+    console.log('Board lost!')
+    
+    // Clear any scheduled AI turns
+    if (this.aiTurnTimeout) {
+      clearTimeout(this.aiTurnTimeout)
+      this.aiTurnTimeout = null
+    }
+    
+    return {
+      success: true,
+      newGameState: {
+        gameStatus: 'game-over',
+        boardStatus: 'lost'
+      },
+      message: 'Board lost! Game over.'
+    }
+  }
+
+  // End current turn and switch to AI
+  endTurn(gameState: GameState): TurnEndResult {
+    if (gameState.gameStatus !== 'playing' || gameState.currentTurn !== 'player') {
+      return {
+        success: false,
+        newGameState: {},
+        shouldTriggerAI: false
+      }
+    }
+    
+    return {
+      success: true,
+      newGameState: {
         currentTurn: 'opponent'
       },
-      events: ['turn-ended'],
       shouldTriggerAI: true
     }
   }
 
-  // Handle board won (player revealed all their tiles first)
-  handleBoardWon(currentState: GameState): GameFlowResult {
-    console.log('Board won! Preparing for next level...')
-    
-    // If shop is open, don't auto-progress - wait for shop to close
-    if (currentState.shopOpen) {
-      return {
-        newState: {
-          boardStatus: 'won'
-        },
-        events: ['board-won']
-      }
-    }
-
-    // Schedule transition to next level after delay
-    return {
-      newState: {
-        boardStatus: 'won'
-      },
-      events: ['board-won'],
-      nextBoardDelay: 2000 // 2 second delay to show victory
-    }
-  }
-
-  // Handle board lost (AI revealed all their tiles first)
-  handleBoardLost(currentState: GameState): GameFlowResult {
-    console.log('Board lost! Run ends.')
-    
-    return {
-      newState: {
-        gameStatus: 'opponent-won' as GameStatus,
-        boardStatus: 'lost'
-      },
-      events: ['board-lost']
-    }
-  }
-
   // Progress to next board
-  progressToNextBoard(currentState: GameState): GameFlowResult {
-    try {
-      const newState = progressToNextLevel(currentState)
-      console.log(`Progressing to level ${newState.run.currentLevel}`)
-      
-      return {
-        newState: newState, // Return the full new state from progressToNextLevel
-        events: ['next-board'],
-        shouldTriggerAI: newState.currentTurn === 'opponent'
-      }
-    } catch (error) {
-      console.error(`Error progressing to next level: ${error}`)
-      return { newState: {}, events: [] }
-    }
-  }
-
-  // Reset game to initial state
-  resetGame(): GameFlowResult {
+  progressToNextBoard(gameState: GameState): BoardProgressionResult {
+    console.log('Progressing to level', gameState.run.currentLevel + 1)
+    
+    const newGameState = progressToNextLevel(gameState)
+    
     return {
-      newState: {
-        gameStatus: 'character-select' as GameStatus,
-        shopOpen: false,
-        upgradeChoice: null,
-        selectedCharacter: null,
-        // Note: createInitialGameState() should be called by the caller
-        // We just provide the status change here
-      },
-      events: ['game-reset']
+      success: true,
+      newGameState,
+      message: `Progressed to level ${newGameState.run.currentLevel}`
     }
   }
 
-  // Handle shop closure when board was won
-  handleShopClosedAfterWin(currentState: GameState): GameFlowResult {
-    if (currentState.boardStatus === 'won' && !currentState.shopOpen) {
-      console.log('Shop closed and board was won - triggering progression')
-      return this.handleBoardWon(currentState)
+  // Schedule AI turn with delay
+  scheduleAITurn(executeCallback: () => void, delay: number = 1000): void {
+    if (this.aiTurnTimeout) {
+      clearTimeout(this.aiTurnTimeout)
     }
     
-    return { newState: {}, events: [] }
-  }
-
-  // Determine if game flow should trigger AI turn
-  shouldTriggerAITurn(currentState: GameState, pendingUpgradeChoice: boolean): boolean {
-    return currentState.currentTurn === 'opponent' && 
-           currentState.gameStatus === 'playing' && 
-           currentState.boardStatus === 'in-progress' &&
-           !currentState.upgradeChoice && 
-           !pendingUpgradeChoice
-  }
-
-  // Check if game is in a playable state
-  isGamePlayable(currentState: GameState): boolean {
-    return currentState.gameStatus === 'playing' && 
-           currentState.boardStatus === 'in-progress'
-  }
-
-  // Get current game phase for UI display
-  getCurrentPhase(currentState: GameState): string {
-    if (currentState.gameStatus === 'character-select') {
-      return 'Character Selection'
-    }
+    this.aiTurnTimeout = setTimeout(executeCallback, delay) as any
     
-    if (currentState.gameStatus === 'playing') {
-      if (currentState.shopOpen) {
-        return 'Shopping'
+    // Prevent timeout from keeping test process alive
+    if (this.aiTurnTimeout && typeof this.aiTurnTimeout === 'object' && 'unref' in this.aiTurnTimeout) {
+      (this.aiTurnTimeout as any).unref()
+    }
+  }
+
+  // Execute AI turn
+  executeAITurn(gameState: GameState): BoardProgressionResult {
+    if (gameState.gameStatus !== 'playing' || gameState.currentTurn !== 'opponent') {
+      return {
+        success: false,
+        newGameState: {},
+        message: 'Cannot execute AI turn in current state'
       }
-      if (currentState.upgradeChoice) {
-        return 'Choosing Upgrade'
-      }
-      if (currentState.boardStatus === 'won') {
-        return 'Victory!'
-      }
-      if (currentState.boardStatus === 'lost') {
-        return 'Defeat!'
-      }
-      return `Level ${currentState.run.currentLevel} - ${currentState.currentTurn === 'player' ? 'Your Turn' : 'AI Turn'}`
     }
     
-    if (currentState.gameStatus === 'opponent-won') {
-      return 'Game Over'
+    const aiMove = this.ai.takeTurn(gameState.board)
+    if (!aiMove) {
+      return {
+        success: false,
+        newGameState: {},
+        message: 'AI could not find valid move'
+      }
     }
     
-    if (currentState.gameStatus === 'run-complete') {
-      return 'Run Complete!'
+    console.log(`AI reveals tile at (${aiMove.x}, ${aiMove.y})`)
+    const success = revealTile(gameState.board, aiMove.x, aiMove.y, 'opponent')
+    
+    if (!success) {
+      return {
+        success: false,
+        newGameState: {},
+        message: 'AI move failed'
+      }
     }
     
-    return 'Unknown Phase'
+    const newBoardStatus = checkBoardStatus(gameState.board)
+    
+    // Generate new clue when switching to player turn and add to array
+    const newClues = newBoardStatus === 'in-progress' ? 
+      [...gameState.clues, generateClue(gameState.board, gameState.run.upgrades)] : gameState.clues
+    
+    return {
+      success: true,
+      newGameState: {
+        board: { ...gameState.board },
+        boardStatus: newBoardStatus,
+        clues: newClues,
+        // Switch back to player turn (if board still in progress)
+        currentTurn: newBoardStatus === 'in-progress' ? 'player' : 'opponent'
+      }
+    }
   }
 
-  // Validate state transition
-  canTransitionTo(currentState: GameState, newStatus: GameStatus): boolean {
-    const current = currentState.gameStatus
-    
-    // Define valid transitions
-    const validTransitions: Record<GameStatus, GameStatus[]> = {
-      'character-select': ['playing'],
-      'playing': ['opponent-won', 'run-complete', 'character-select'],
-      'opponent-won': ['character-select'],
-      'run-complete': ['character-select']
+  // Clear pending upgrade choice
+  clearPendingUpgradeChoice(): void {
+    this.pendingUpgradeChoice = false
+  }
+
+  // Check if upgrade choice is pending
+  isPendingUpgradeChoice(): boolean {
+    return this.pendingUpgradeChoice
+  }
+
+  // Clean up timeouts
+  cleanup(): void {
+    if (this.aiTurnTimeout) {
+      clearTimeout(this.aiTurnTimeout)
+      this.aiTurnTimeout = null
     }
-    
-    return validTransitions[current]?.includes(newStatus) || false
+    if (this.boardProgressionTimeout) {
+      clearTimeout(this.boardProgressionTimeout)
+      this.boardProgressionTimeout = null
+    }
+    this.pendingUpgradeChoice = false
   }
 }

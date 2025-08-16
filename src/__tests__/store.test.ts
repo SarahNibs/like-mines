@@ -273,12 +273,12 @@ describe('GameStore', () => {
   })
 
   describe('Shop System', () => {
-    it('should handle shop operations', () => {
+    it('should handle shop operations', async () => {
       expect(typeof gameStore.openShop).toBe('function')
       expect(typeof gameStore.buyShopItem).toBe('function')
       expect(typeof gameStore.closeShop).toBe('function')
       
-      gameStore.openShop()
+      await gameStore.openShop()
       
       const result = gameStore.buyShopItem(0)
       expect(typeof result).toBe('boolean')
@@ -332,14 +332,14 @@ describe('GameStore', () => {
   })
 
   describe('State Consistency', () => {
-    it('should maintain consistent state after multiple operations', () => {
+    it('should maintain consistent state after multiple operations', async () => {
       const initialState = gameStore.getState()
       
       // Perform various operations
       gameStore.revealTileAt(0, 0)
       gameStore.toggleAnnotation(1, 1)
       gameStore.useInventoryItem(0)
-      gameStore.openShop()
+      await gameStore.openShop()
       gameStore.closeShop()
       
       const finalState = gameStore.getState()

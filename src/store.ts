@@ -4,17 +4,23 @@ import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
 import { TileContentManager } from './TileContentManager'
 import { InventoryManager, ItemUsageResult } from './InventoryManager'
+import { GameFlowManager, TileRevealResult, BoardProgressionResult, TurnEndResult } from './GameFlowManager'
+import { ShopManager } from './ShopManager'
+import { TrophyManager } from './TrophyManager'
+import { ToolModeManager } from './ToolModeManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
   private state: GameState
   private observers: Array<() => void> = []
   private ai: AIOpponent
-  private aiTurnTimeout: number | null = null
-  private boardProgressionTimeout: number | null = null
-  private pendingUpgradeChoice: boolean = false
   private tileContentManager: TileContentManager
   private inventoryManager: InventoryManager
+  private gameFlowManager: GameFlowManager
+  private shopManager: ShopManager
+  private trophyManager: TrophyManager
+  private toolModeManager: ToolModeManager
+  private pendingAITurn: boolean = false
 
   constructor() {
     this.state = createInitialGameState()
@@ -22,6 +28,10 @@ class GameStore {
     this.ai = new DumbAI()
     this.tileContentManager = new TileContentManager()
     this.inventoryManager = new InventoryManager()
+    this.gameFlowManager = new GameFlowManager()
+    this.shopManager = new ShopManager()
+    this.trophyManager = new TrophyManager()
+    this.toolModeManager = new ToolModeManager()
   }
 
   // Get current state
@@ -55,213 +65,154 @@ class GameStore {
 
   // Actions
   revealTileAt(x: number, y: number, bypassRewind: boolean = false): boolean {
-    if (this.state.gameStatus !== 'playing' || this.state.currentTurn !== 'player') {
+    // Create tile content handler that bridges to existing logic
+    const tileContentHandler = (tile: any) => {
+      // Get tile content result without executing special actions
+      const result = this.handleTileContent(tile)
+      
+      return {
+        updatedRun: result.updatedRun,
+        triggerUpgradeChoice: result.triggerUpgradeChoice,
+        triggerShop: result.triggerShop,
+        playerDied: result.playerDied
+      }
+    }
+    
+    // Use GameFlowManager for core tile reveal logic
+    const result = this.gameFlowManager.revealTile(this.state, x, y, tileContentHandler, bypassRewind)
+    
+    if (!result.success) {
       return false
     }
     
-    // Block player actions when upgrade choice is pending
-    if (this.state.upgradeChoice || this.pendingUpgradeChoice) {
-      return false
+    // Apply state changes from GameFlowManager
+    this.setState(result.newGameState)
+    
+    // Execute tile content actions based on the result
+    const tileContentResult = this.handleTileContent(getTileAt(this.state.board, x, y))
+    
+    // Handle player death
+    if (result.playerDied) {
+      this.executeTileContentActions(tileContentResult)
+      return true
     }
     
-    const tile = getTileAt(this.state.board, x, y)
-    if (!tile || tile.revealed) {
-      return false
+    // Handle upgrade choice pause
+    if (result.shouldPauseForUpgrade) {
+      // Remember if AI should turn after upgrade choice
+      this.pendingAITurn = result.deferredAITurn
+      // Execute the upgrade choice action
+      this.executeTileContentActions(tileContentResult)
+      return true
     }
     
-    // Check if tile is blocked by a chain
-    if (tile.chainData && tile.chainData.isBlocked) {
-      const requiredTile = getTileAt(this.state.board, tile.chainData.requiredTileX, tile.chainData.requiredTileY)
-      if (requiredTile && !requiredTile.revealed) {
-        console.log('Cannot click this tile - it\'s chained! Must reveal the connected tile first.')
-        return false
-      }
+    // Handle shop pause
+    if (result.shouldPauseForShop) {
+      // Remember if AI should turn after shop closes
+      this.pendingAITurn = result.deferredAITurn
+      // Execute the shop action
+      this.executeTileContentActions(tileContentResult)
+      return true
     }
     
-    // Check for Rewind protection on dangerous tiles (unless bypassed with SHIFT)
-    // BUT first check if Protection would handle this - if so, don't trigger Rewind
-    const wouldProtectionActivate = tile.owner !== 'player' && 
-                                   this.state.run.temporaryBuffs.protection && 
-                                   this.state.run.temporaryBuffs.protection > 0
+    // Execute normal tile content actions
+    this.executeTileContentActions(tileContentResult)
     
-    // Rewind logic removed
-    
-    const success = revealTile(this.state.board, x, y, 'player')
-    if (success) {
-      const newBoardStatus = checkBoardStatus(this.state.board)
-      const isPlayerTile = tile.owner === 'player'
-      
-      // Award trophies when board is won
-      if (newBoardStatus === 'won') {
-        this.awardTrophies()
-      }
-      
-      // Award loot bonus for revealing opponent tiles
-      if (tile.owner === 'opponent') {
-        this.state.run.gold += this.state.run.loot
-      }
-      
-      // RESTING upgrade: heal when revealing neutral tiles
-      if (tile.owner === 'neutral') {
-        const restingCount = this.state.run.upgrades.filter(id => id === 'resting').length
-        if (restingCount > 0) {
-          const healAmount = restingCount * 2
-          this.state.run.hp = Math.min(this.state.run.maxHp, this.state.run.hp + healAmount)
-          console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
-        }
-      }
-      
-      // Handle tile content after checking board status
-      this.handleTileContent(tile)
-      
-      // Check if player died after handling content
-      if (this.state.gameStatus === 'player-died') {
-        return // Exit early if player died
-      }
-      
-      // Check if upgrade choice was triggered - pause game until choice is made
-      if (this.pendingUpgradeChoice || this.state.upgradeChoice) {
-        return // Exit early, do not continue turn logic until upgrade is chosen
-      }
-      
-      // Check if Protection should activate before consuming it
-      const hadProtection = this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0
-      
-      // Consume Protection charge on ANY tile reveal (if active)
-      if (hadProtection) {
-        this.state.run.temporaryBuffs.protection -= 1
-        console.log(`Protection consumed! ${this.state.run.temporaryBuffs.protection} charges remaining.`)
-      }
-      
-      // Player continues turn if they revealed their own tile, or if protection was active
-      let newTurn = 'player'
-      if (newBoardStatus === 'in-progress' && !isPlayerTile && !hadProtection) {
-        // Player revealed opponent/neutral tile without protection - turn ends
-        newTurn = 'opponent'
-      }
-      
-      this.setState({
-        board: { ...this.state.board },
-        boardStatus: newBoardStatus,
-        currentTurn: newTurn
-      })
-      
-      // Handle board completion
-      if (newBoardStatus === 'won') {
-        this.handleBoardWon()
-      } else if (newBoardStatus === 'lost') {
-        this.handleBoardLost()
-      } else if (newTurn === 'opponent') {
-        // Only trigger AI turn if no upgrade choice is pending
-        if (!this.state.upgradeChoice && !this.pendingUpgradeChoice) {
-          this.scheduleAITurn()
-        }
-      }
+    // Handle board completion
+    if (this.state.boardStatus === 'won') {
+      this.handleBoardWon()
+    } else if (this.state.boardStatus === 'lost') {
+      this.handleBoardLost()
+    } else if (result.shouldTriggerAI) {
+      this.scheduleAITurn()
     }
     
-    return success
+    return true
   }
 
 
   // Schedule AI turn with delay for better UX
   private scheduleAITurn(): void {
-    if (this.aiTurnTimeout) {
-      clearTimeout(this.aiTurnTimeout)
-    }
-    
-    this.aiTurnTimeout = setTimeout(() => {
+    this.gameFlowManager.scheduleAITurn(() => {
       this.executeAITurn()
-    }, 1000) as any // 1 second delay
+    }, 1000)
   }
 
   // Execute AI turn
   private executeAITurn(): void {
-    if (this.state.gameStatus !== 'playing' || this.state.currentTurn !== 'opponent') {
+    const result = this.gameFlowManager.executeAITurn(this.state)
+    
+    if (!result.success) {
       return
     }
     
-    const aiMove = this.ai.takeTurn(this.state.board)
-    if (aiMove) {
-      console.log(`AI reveals tile at (${aiMove.x}, ${aiMove.y})`)
-      const success = revealTile(this.state.board, aiMove.x, aiMove.y, 'opponent')
-      
-      if (success) {
-        const newBoardStatus = checkBoardStatus(this.state.board)
-        
-        // Generate new clue when switching to player turn and add to array
-        const newClues = newBoardStatus === 'in-progress' ? 
-          [...this.state.clues, generateClue(this.state.board, this.state.run.upgrades)] : this.state.clues
-        
-        this.setState({
-          board: { ...this.state.board },
-          boardStatus: newBoardStatus,
-          clues: newClues,
-          // Switch back to player turn (if board still in progress)
-          currentTurn: newBoardStatus === 'in-progress' ? 'player' : 'opponent'
-        })
-        
-        // Handle board completion
-        if (newBoardStatus === 'won') {
-          this.handleBoardWon()
-        } else if (newBoardStatus === 'lost') {
-          this.handleBoardLost()
-        }
-      }
+    // Apply state changes from GameFlowManager
+    this.setState(result.newGameState)
+    
+    // Handle board completion
+    if (this.state.boardStatus === 'won') {
+      this.handleBoardWon()
+    } else if (this.state.boardStatus === 'lost') {
+      this.handleBoardLost()
     }
   }
 
   // Handle board won (player revealed all their tiles first)
   private handleBoardWon(): void {
-    console.log('Board won! Preparing for next level...')
-    
     // If shop is open, don't auto-progress - wait for shop to close
     if (this.state.shopOpen) {
       console.log('Shop is open - waiting for player to close shop before progressing')
       return
     }
     
-    // Schedule transition to next level after delay
-    if (this.boardProgressionTimeout) {
-      clearTimeout(this.boardProgressionTimeout)
-    }
-    this.boardProgressionTimeout = setTimeout(() => {
+    // Use GameFlowManager to handle board won
+    const result = this.gameFlowManager.handleBoardWon(this.state, () => {
+      this.awardTrophies()
+    }, () => {
       this.progressToNextBoard()
-      this.boardProgressionTimeout = null
-    }, 2000) as any // 2 second delay to show victory
+    })
+    
+    if (result.success) {
+      this.setState(result.newGameState)
+    }
   }
 
   // Handle board lost (AI revealed all their tiles first)
   private handleBoardLost(): void {
-    console.log('Board lost! Run ends.')
-    this.setState({
-      gameStatus: 'opponent-won'
-    })
+    const result = this.gameFlowManager.handleBoardLost(this.state)
+    
+    if (result.success) {
+      this.setState(result.newGameState)
+    }
   }
 
   // End current player turn manually
   endTurn(): void {
-    if (this.state.gameStatus !== 'playing' || this.state.currentTurn !== 'player') {
+    const result = this.gameFlowManager.endTurn(this.state)
+    
+    if (!result.success) {
       return
     }
     
-    console.log('Player ending turn manually')
-    this.setState({
-      currentTurn: 'opponent'
-    })
+    this.setState(result.newGameState)
     
-    // Trigger AI turn (which will generate clue when switching back to player)
-    this.scheduleAITurn()
+    if (result.shouldTriggerAI) {
+      this.scheduleAITurn()
+    }
   }
 
   // Progress to next board
   progressToNextBoard(): void {
-    const newState = progressToNextLevel(this.state)
-    console.log(`Progressing to level ${newState.run.currentLevel}`)
+    const result = this.gameFlowManager.progressToNextBoard(this.state)
+    
+    if (!result.success) {
+      return
+    }
     
     // Reset AI for new board
     this.ai.resetForNewBoard()
     
-    this.setState(newState)
+    this.setState(result.newGameState)
   }
 
   // Toggle tile annotation (3-state cycle: none -> slash -> dog-ear -> none)
@@ -290,15 +241,16 @@ class GameStore {
     return true
   }
 
-  // Handle tile content when revealed
-  private handleTileContent(tile: any): void {
-    const result = this.tileContentManager.handleTileContent(tile, this.state.run, this.state.board)
-    
-    // Handle special actions based on result
+  // Handle tile content when revealed - returns the result without executing special actions
+  private handleTileContent(tile: any): any {
+    return this.tileContentManager.handleTileContent(tile, this.state.run, this.state.board)
+  }
+
+  // Execute the special actions from tile content handling
+  private executeTileContentActions(result: any): void {
     if (result.triggerUpgradeChoice) {
       this.triggerUpgradeChoice()
       console.log(result.message)
-      this.pendingUpgradeChoice = true
       this.setState({ run: result.updatedRun })
     } else if (result.triggerShop) {
       console.log(result.message)
@@ -422,39 +374,39 @@ class GameStore {
     })
   }
 
-  // Start transmute mode
+  // Start transmute mode (delegated to ToolModeManager)
   private startTransmuteMode(itemIndex: number): void {
-    console.log('Transmute activated! Click any unrevealed tile to convert it to your tile.')
-    this.setState({ 
-      transmuteMode: true,
-      transmuteItemIndex: itemIndex // Store which inventory slot to consume
-    })
+    const result = this.toolModeManager.startTransmuteMode(this.state.run.inventory[itemIndex])
+    if (result.success) {
+      this.setState({ 
+        transmuteMode: true,
+        transmuteItemIndex: itemIndex
+      })
+    }
   }
 
-  // Handle transmute tile click
+  // Handle transmute tile click (delegated to ToolModeManager)
   transmuteTileAt(x: number, y: number): boolean {
     if (!this.state.transmuteMode) return false
     
-    const tile = getTileAt(this.state.board, x, y)
-    if (!tile || tile.revealed) {
-      console.log('Can only transmute unrevealed tiles!')
-      // Still consume the item even on invalid attempts
-      const itemIndex = (this.state as any).transmuteItemIndex
-      removeItemFromInventory(this.state.run, itemIndex)
-      this.setState({
-        run: { ...this.state.run },
-        transmuteMode: false,
-        transmuteItemIndex: undefined
-      })
-      return false
-    }
-    
-    // Always consume the transmute item, regardless of success/failure
     const itemIndex = (this.state as any).transmuteItemIndex
+    const result = this.toolModeManager.useTransmute(this.state.board, this.state.run, x, y)
+    
+    // Always consume the item and exit transmute mode
     removeItemFromInventory(this.state.run, itemIndex)
     
-    if (tile.owner === 'player') {
-      console.log('Tile is already yours! Transmute consumed anyway.')
+    if (result.success) {
+      // Update detector scans since tile ownership may have changed
+      this.updateDetectorScans()
+      
+      this.setState({
+        board: result.updatedBoard!,
+        run: { ...this.state.run },
+        transmuteMode: false,
+        transmuteItemIndex: undefined
+      })
+      return true
+    } else {
       this.setState({
         run: { ...this.state.run },
         transmuteMode: false,
@@ -462,31 +414,6 @@ class GameStore {
       })
       return false
     }
-    
-    // Convert tile to player ownership
-    const oldOwner = tile.owner
-    tile.owner = 'player'
-    
-    // Update board tile counts
-    if (oldOwner === 'opponent') {
-      this.state.board.opponentTilesTotal--
-    }
-    this.state.board.playerTilesTotal++
-    
-    console.log(`Transmuted ${oldOwner} tile at (${x}, ${y}) to player tile!`)
-    
-    // Update any existing detector scans since tile ownership changed
-    this.updateDetectorScans()
-    
-    // Exit transmute mode (item already consumed above)
-    this.setState({
-      board: { ...this.state.board },
-      run: { ...this.state.run },
-      transmuteMode: false,
-      transmuteItemIndex: undefined
-    })
-    
-    return true
   }
 
   // Cancel transmute mode
@@ -814,68 +741,13 @@ class GameStore {
     }
   }
 
-  // Shop functionality
+  // Shop functionality (delegated to ShopManager)
   async openShop(): Promise<void> {
-    try {
-      // Generate items and upgrades with costs scaling by level and Traders bonus
-      const { SHOP_ITEMS } = await import('./items')
-      const { getAvailableUpgrades } = await import('./upgrades')
-      
-      // Base costs based on shop number (shops appear on levels 3, 6, 9, 12, 15, 18)
-      const level = this.state.run.currentLevel
-      const shopNumber = Math.floor(level / 3) // 1st shop (level 3) = 1, 2nd shop (level 6) = 2, etc.
-      
-      // Count Traders upgrades for additional items
-      const tradersCount = this.state.run.upgrades.filter(id => id === 'traders').length
-      const baseItemCount = 5
-      const totalItemCount = baseItemCount + tradersCount
-      
-      // Generate item costs: Level 3: 2,3,4,5 / Level 6: 3,4,5,6 / Level 9: 4,5,6,7 etc.
-      const baseItemCost = 1 + shopNumber // Level 3 = shop 1, base cost 2. Level 6 = shop 2, base cost 3.
-      const itemCosts = []
-      for (let i = 0; i < totalItemCount; i++) {
-        const extraCost = i >= baseItemCount ? i - baseItemCount + 1 : 0 // Traders extra items cost +1 more
-        itemCosts.push(baseItemCost + i + extraCost)
-      }
-      
-      // Generate upgrade costs: Level 3: 7 / Level 6: 8 / Level 9: 9 etc.
-      const baseUpgradeCost = 6 + shopNumber // Level 3 = shop 1, upgrade cost 7. Level 6 = shop 2, upgrade cost 8.
-      const totalUpgradeCount = 1 + tradersCount
-      const upgradeCosts = []
-      for (let i = 0; i < totalUpgradeCount; i++) {
-        upgradeCosts.push(baseUpgradeCost + (i > 0 ? i : 0))
-      }
-      
-      const shopItems = []
-      
-      // Add random items
-      for (let i = 0; i < totalItemCount; i++) {
-        const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
-        shopItems.push({
-          item: randomItem,
-          cost: itemCosts[i],
-          isUpgrade: false
-        })
-      }
-      
-      // Add random upgrades
-      const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
-      for (let i = 0; i < totalUpgradeCount && i < availableUpgrades.length; i++) {
-        const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
-        shopItems.push({
-          item: randomUpgrade,
-          cost: upgradeCosts[i],
-          isUpgrade: true
-        })
-      }
-      
-      this.setState({
-        shopOpen: true,
-        shopItems
-      })
-    } catch (error) {
-      console.error('Error opening shop:', error)
-    }
+    const shopItems = await this.shopManager.openShop(this.state)
+    this.setState({
+      shopOpen: true,
+      shopItems: shopItems
+    })
   }
 
   // Buy item from shop
@@ -887,9 +759,10 @@ class GameStore {
     const shopItem = this.state.shopItems[index]
     const run = this.state.run
     
-    // Check if player has enough gold
-    if (run.gold < shopItem.cost) {
-      console.log(`Not enough gold! Need ${shopItem.cost}, have ${run.gold}`)
+    // Use ShopManager to validate purchase
+    const validation = this.shopManager.canPurchaseItem(run, shopItem, this.state.shopOpen, this.state.shopItems, index)
+    if (!validation.canPurchase) {
+      console.log(validation.reason)
       return false
     }
     
@@ -898,20 +771,21 @@ class GameStore {
     
     // Handle upgrades vs items
     if (shopItem.isUpgrade) {
-      // Apply upgrade immediately - this will handle its own setState
+      // Apply upgrade immediately
       this.applyUpgrade(shopItem.item.id)
       console.log(`Bought and applied ${shopItem.item.name} upgrade for ${shopItem.cost} gold`)
       
-      // Remove the bought item from shop and update state with current run from state (which was updated by applyUpgrade)
+      // Remove the bought item from shop
       const newShopItems = [...this.state.shopItems]
       newShopItems.splice(index, 1)
       
       this.setState({ 
-        run: { ...this.state.run }, // Use the updated run from state
+        run: { ...this.state.run },
         shopItems: newShopItems
       })
     } else if (shopItem.item.immediate) {
       // Use immediate item right away
+      const { applyItemEffect } = require('./items')
       const message = applyItemEffect(run, shopItem.item)
       console.log(`Bought and used ${shopItem.item.name} for ${shopItem.cost} gold: ${message}`)
       
@@ -925,6 +799,7 @@ class GameStore {
       })
     } else {
       // Try to add item to inventory
+      const { addItemToInventory } = require('./items')
       const success = addItemToInventory(run, shopItem.item)
       if (!success) {
         console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`)
@@ -947,16 +822,24 @@ class GameStore {
   // Close shop
   closeShop(): void {
     const wasBoardWon = this.state.boardStatus === 'won'
+    const shouldTriggerAI = this.pendingAITurn
     
     this.setState({
       shopOpen: false,
       shopItems: []
     })
     
+    // Clear pending AI turn flag
+    this.pendingAITurn = false
+    
     // If board was won while shop was open, trigger progression now
     if (wasBoardWon) {
       console.log('Shop closed and board was won - triggering progression')
       this.handleBoardWon()
+    } else if (shouldTriggerAI && this.state.currentTurn === 'opponent' && this.state.boardStatus === 'in-progress') {
+      // Trigger deferred AI turn
+      console.log('Shop closed - triggering deferred AI turn')
+      this.scheduleAITurn()
     }
   }
 
@@ -1070,19 +953,23 @@ class GameStore {
     
     this.applyUpgrade(chosenUpgrade.id)
     
-    // Check if we need to trigger AI turn after choosing upgrade
-    const shouldTriggerAI = this.state.currentTurn === 'opponent' && 
+    // Check if we need to trigger deferred AI turn
+    const shouldTriggerAI = this.pendingAITurn && 
+                           this.state.currentTurn === 'opponent' && 
                            this.state.gameStatus === 'playing' && 
                            this.state.boardStatus === 'in-progress'
     
-    // Clear the upgrade choice widget and pending flag
-    this.pendingUpgradeChoice = false
+    
+    // Clear the upgrade choice widget and pending flags
+    this.gameFlowManager.clearPendingUpgradeChoice()
+    this.pendingAITurn = false
     this.setState({
       upgradeChoice: null
     })
     
-    // Now trigger AI turn if needed
+    // Now trigger deferred AI turn if needed
     if (shouldTriggerAI) {
+      console.log('Upgrade chosen - triggering deferred AI turn')
       this.scheduleAITurn()
     }
     
@@ -1110,15 +997,9 @@ class GameStore {
       return
     }
     
-    // Clear any existing timeouts
-    if (this.aiTurnTimeout) {
-      clearTimeout(this.aiTurnTimeout)
-      this.aiTurnTimeout = null
-    }
-    if (this.boardProgressionTimeout) {
-      clearTimeout(this.boardProgressionTimeout)
-      this.boardProgressionTimeout = null
-    }
+    // Clear any existing timeouts and reset GameFlowManager
+    this.gameFlowManager.cleanup()
+    this.pendingAITurn = false
     
     // Create character-specific run state
     const characterRun = createCharacterRunState(characterId)
@@ -1204,17 +1085,11 @@ class GameStore {
   }
 
   resetGame(): void {
-    // Clear any pending AI turn
-    if (this.aiTurnTimeout) {
-      clearTimeout(this.aiTurnTimeout)
-      this.aiTurnTimeout = null
-    }
+    // Clean up GameFlowManager timeouts
+    this.gameFlowManager.cleanup()
     
-    // Clear any pending board progression
-    if (this.boardProgressionTimeout) {
-      clearTimeout(this.boardProgressionTimeout)
-      this.boardProgressionTimeout = null
-    }
+    // Reset flags
+    this.pendingAITurn = false
     
     // Reset AI for new game
     this.ai.resetForNewBoard()
@@ -1276,82 +1151,25 @@ class GameStore {
     }
   }
 
-  // Award trophies for winning a board
+  // Award trophies for winning a board (delegated to TrophyManager)
   awardTrophies(): void {
-    const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
-    const opponentTilesRevealed = this.state.board.opponentTilesRevealed
-    let trophiesEarned = Math.max(0, opponentTilesLeft - 1) // N-1 trophies
-    
-    // Perfect board bonus: +10 trophies if opponent revealed 0 tiles
-    const perfectBoardBonus = opponentTilesRevealed === 0 ? 10 : 0
-    trophiesEarned += perfectBoardBonus
-    
-    console.log(`Awarding ${trophiesEarned} trophies (${opponentTilesLeft} opponent tiles left)`)
-    if (perfectBoardBonus > 0) {
-      console.log(`Perfect board bonus: +${perfectBoardBonus} trophies!`)
-    }
-    console.log(`Current trophies before awarding:`, this.state.run.trophies.length)
-    
-    // Create new trophies array with existing trophies plus new ones
-    const newTrophies = [...this.state.run.trophies]
-    
-    // Add silver trophies
-    for (let i = 0; i < trophiesEarned; i++) {
-      const trophy = {
-        id: `trophy_${Date.now()}_${i}`,
-        type: 'silver' as const,
-        stolen: false
-      }
-      newTrophies.push(trophy)
-    }
-    
-    console.log(`New trophies array length after adding:`, newTrophies.length)
-    
-    // Update state with new trophies array
+    const result = this.trophyManager.processVictoryTrophies(this.state.board, this.state.run.trophies)
     this.setState({
       run: {
         ...this.state.run,
-        trophies: newTrophies
+        trophies: result.finalTrophies
       }
     })
-    
-    // Collapse trophies if we have 10 or more silver, using the fresh trophies array
-    this.collapseTrophies(newTrophies)
   }
-  
-  // Collapse 10 silver trophies into 1 gold trophy
-  collapseTrophies(inputTrophies?: any[]): void {
-    let trophies = inputTrophies ? [...inputTrophies] : [...this.state.run.trophies]
-    let silverTrophies = trophies.filter(t => t.type === 'silver' && !t.stolen)
-    let changed = false
-    
-    while (silverTrophies.length >= 10) {
-      // Remove 10 silver trophies
-      for (let i = 0; i < 10; i++) {
-        const silverIndex = trophies.findIndex(t => t.type === 'silver' && !t.stolen)
-        if (silverIndex !== -1) {
-          trophies.splice(silverIndex, 1)
-        }
-      }
-      
-      // Add 1 gold trophy
-      const goldTrophy = {
-        id: `gold_trophy_${Date.now()}`,
-        type: 'gold' as const,
-        stolen: false
-      }
-      trophies.push(goldTrophy)
-      
-      // Update the silver trophies list for next iteration
-      silverTrophies = trophies.filter(t => t.type === 'silver' && !t.stolen)
-      changed = true
-    }
-    
-    if (changed) {
+
+  // Collapse trophies (delegated to TrophyManager) 
+  collapseTrophies(): void {
+    const result = this.trophyManager.collapseTrophies(this.state.run.trophies)
+    if (result.collapsed) {
       this.setState({
         run: {
           ...this.state.run,
-          trophies: trophies
+          trophies: result.finalTrophies
         }
       })
     }

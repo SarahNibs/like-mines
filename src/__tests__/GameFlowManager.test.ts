@@ -1,463 +1,390 @@
-import { GameFlowManager, GameStatus, GameFlowEvent } from '../GameFlowManager'
-import { GameState } from '../types'
-import { createInitialGameState } from '../gameLogic'
+/**
+ * Tests for GameFlowManager - Core game flow logic including turns, board progression, and game state transitions
+ */
 
-// Helper to create a minimal game state for testing
-function createTestGameState(overrides: Partial<GameState> = {}): GameState {
-  const baseState = createInitialGameState()
+import { GameFlowManager, TileRevealResult, BoardProgressionResult, TurnEndResult } from '../GameFlowManager'
+import { GameState, Board, RunState, TileOwner, TileContent } from '../types'
+
+// Mock dependencies
+jest.mock('../gameLogic', () => ({
+  revealTile: jest.fn(),
+  checkBoardStatus: jest.fn(),
+  progressToNextLevel: jest.fn()
+}))
+
+jest.mock('../clues', () => ({
+  generateClue: jest.fn()
+}))
+
+jest.mock('../ai', () => ({
+  DumbAI: jest.fn().mockImplementation(() => ({
+    takeTurn: jest.fn()
+  }))
+}))
+
+import { revealTile, checkBoardStatus, progressToNextLevel } from '../gameLogic'
+import { generateClue } from '../clues'
+
+const mockRevealTile = revealTile as jest.MockedFunction<typeof revealTile>
+const mockCheckBoardStatus = checkBoardStatus as jest.MockedFunction<typeof checkBoardStatus>
+const mockProgressToNextLevel = progressToNextLevel as jest.MockedFunction<typeof progressToNextLevel>
+const mockGenerateClue = generateClue as jest.MockedFunction<typeof generateClue>
+
+// Test helper functions
+function createTestBoard(width: number = 3, height: number = 3): Board {
+  const tiles = []
+  for (let y = 0; y < height; y++) {
+    const row = []
+    for (let x = 0; x < width; x++) {
+      row.push({
+        x,
+        y,
+        owner: TileOwner.Player,
+        content: TileContent.Empty,
+        revealed: false,
+        fogged: false,
+        annotated: null,
+        chainData: null,
+        detectorScan: null,
+        itemData: null,
+        monsterData: null,
+        upgradeData: null,
+        revealedBy: null
+      })
+    }
+    tiles.push(row)
+  }
+  
   return {
-    ...baseState,
+    width,
+    height,
+    tiles
+  }
+}
+
+function createTestRun(): RunState {
+  return {
+    currentLevel: 1,
+    hp: 10,
+    maxHp: 10,
+    gold: 50,
+    loot: 1,
+    inventory: [null, null, null, null],
+    upgrades: [],
+    temporaryBuffs: {
+      protection: 0
+    }
+  }
+}
+
+function createTestGameState(overrides: Partial<GameState> = {}): GameState {
+  return {
+    board: createTestBoard(),
+    boardStatus: 'in-progress',
+    gameStatus: 'playing',
+    currentTurn: 'player',
+    clues: [],
+    shopOpen: false,
+    shopItems: [],
+    pendingDiscard: null,
+    upgradeChoice: null,
+    run: createTestRun(),
     ...overrides
   }
 }
 
 describe('GameFlowManager', () => {
-  let gameFlow: GameFlowManager
-
+  let gameFlowManager: GameFlowManager
+  
   beforeEach(() => {
-    gameFlow = new GameFlowManager()
-    
-    // Mock console methods to reduce test noise
-    jest.spyOn(console, 'log').mockImplementation()
-    jest.spyOn(console, 'error').mockImplementation()
+    gameFlowManager = new GameFlowManager()
+    jest.clearAllMocks()
   })
 
   afterEach(() => {
-    jest.restoreAllMocks()
+    gameFlowManager.cleanup()
   })
 
-  describe('character selection', () => {
-    it('should handle valid character selection', () => {
-      const state = createTestGameState({
-        gameStatus: 'character-select'
+  describe('revealTile', () => {
+    const mockTileContentHandler = jest.fn()
+
+    beforeEach(() => {
+      mockTileContentHandler.mockReset()
+      mockTileContentHandler.mockReturnValue({
+        updatedRun: createTestRun(),
+        triggerUpgradeChoice: false,
+        triggerShop: false,
+        playerDied: false
       })
-      
-      const result = gameFlow.selectCharacter(state, 'fighter')
-      
-      expect(result.newState.gameStatus).toBe('playing')
-      expect(result.events).toContain('character-selected')
-      expect(result.newState.selectedCharacter).toBeDefined()
+      mockRevealTile.mockReturnValue(true)
+      mockCheckBoardStatus.mockReturnValue('in-progress')
     })
 
-    it('should reject character selection when not in character-select state', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing'
-      })
+    it('should fail when game is not in playing state', () => {
+      const gameState = createTestGameState({ gameStatus: 'game-over' })
       
-      const result = gameFlow.selectCharacter(state, 'fighter')
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
       
-      expect(result.newState).toEqual({})
-      expect(result.events).toEqual([])
+      expect(result.success).toBe(false)
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(false)
+      expect(mockRevealTile).not.toHaveBeenCalled()
     })
 
-    it('should handle invalid character IDs gracefully', () => {
-      const state = createTestGameState({
-        gameStatus: 'character-select'
+    it('should fail when it is not player turn', () => {
+      const gameState = createTestGameState({ currentTurn: 'opponent' })
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(false)
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(false)
+      expect(mockRevealTile).not.toHaveBeenCalled()
+    })
+
+    it('should fail when upgrade choice is pending', () => {
+      const gameState = createTestGameState({ upgradeChoice: { choices: [], callback: jest.fn() } })
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(false)
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(false)
+      expect(mockRevealTile).not.toHaveBeenCalled()
+    })
+
+    it('should fail when tile is already revealed', () => {
+      const gameState = createTestGameState()
+      gameState.board.tiles[0][0].revealed = true
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(false)
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(false)
+      expect(mockRevealTile).not.toHaveBeenCalled()
+    })
+
+    it('should successfully reveal player tile and continue turn', () => {
+      const gameState = createTestGameState()
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(true)
+      expect(result.newGameState.currentTurn).toBe('player')
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(false)
+      expect(mockRevealTile).toHaveBeenCalledWith(gameState.board, 0, 0, 'player')
+    })
+
+    it('should successfully reveal opponent tile and switch turn', () => {
+      const gameState = createTestGameState()
+      gameState.board.tiles[0][0].owner = TileOwner.Opponent
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(true)
+      expect(result.newGameState.currentTurn).toBe('opponent')
+      expect(result.shouldTriggerAI).toBe(true)
+      expect(result.deferredAITurn).toBe(false)
+    })
+
+    it('should handle player death', () => {
+      const gameState = createTestGameState()
+      
+      mockTileContentHandler.mockReturnValue({
+        updatedRun: gameState.run,
+        triggerUpgradeChoice: false,
+        triggerShop: false,
+        playerDied: true
       })
       
-      const result = gameFlow.selectCharacter(state, 'invalid-character')
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
       
-      expect(result.newState).toEqual({})
-      expect(result.events).toEqual([])
+      expect(result.success).toBe(true)
+      expect(result.playerDied).toBe(true)
+      expect(result.newGameState.gameStatus).toBe('player-died')
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(false)
+    })
+
+    it('should pause for upgrade choice', () => {
+      const gameState = createTestGameState()
+      
+      mockTileContentHandler.mockReturnValue({
+        updatedRun: gameState.run,
+        triggerUpgradeChoice: true,
+        triggerShop: false,
+        playerDied: false
+      })
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(true)
+      expect(result.shouldPauseForUpgrade).toBe(true)
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(false)
+      expect(gameFlowManager.isPendingUpgradeChoice()).toBe(true)
+    })
+
+    it('should defer AI turn when upgrade choice triggered on non-player tile', () => {
+      const gameState = createTestGameState()
+      gameState.board.tiles[0][0].owner = TileOwner.Opponent
+      
+      mockTileContentHandler.mockReturnValue({
+        updatedRun: gameState.run,
+        triggerUpgradeChoice: true,
+        triggerShop: false,
+        playerDied: false
+      })
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(true)
+      expect(result.shouldPauseForUpgrade).toBe(true)
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(true)
+    })
+
+    it('should defer AI turn when shop triggered on non-player tile', () => {
+      const gameState = createTestGameState()
+      gameState.board.tiles[0][0].owner = TileOwner.Neutral
+      
+      mockTileContentHandler.mockReturnValue({
+        updatedRun: gameState.run,
+        triggerUpgradeChoice: false,
+        triggerShop: true,
+        playerDied: false
+      })
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(true)
+      expect(result.shouldPauseForShop).toBe(true)
+      expect(result.shouldTriggerAI).toBe(false)
+      expect(result.deferredAITurn).toBe(true)
+    })
+
+    it('should consume protection charge on tile reveal', () => {
+      const gameState = createTestGameState()
+      gameState.board.tiles[0][0].owner = TileOwner.Opponent
+      gameState.run.temporaryBuffs.protection = 2
+      
+      mockTileContentHandler.mockReturnValue({
+        updatedRun: { ...gameState.run, temporaryBuffs: { protection: 2 } },
+        triggerUpgradeChoice: false,
+        triggerShop: false,
+        playerDied: false
+      })
+      
+      const result = gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
+      
+      expect(result.success).toBe(true)
+      expect(result.newGameState.run?.temporaryBuffs.protection).toBe(1)
+      expect(result.newGameState.currentTurn).toBe('player') // Protection keeps turn
+      expect(result.deferredAITurn).toBe(false) // No AI turn needed with protection
     })
   })
 
-  describe('turn management', () => {
-    it('should end player turn and switch to opponent', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'player'
-      })
+  describe('handleBoardWon', () => {
+    it('should handle board won scenario', () => {
+      const gameState = createTestGameState()
+      const mockTrophyAwarder = jest.fn()
       
-      const result = gameFlow.endTurn(state)
+      const result = gameFlowManager.handleBoardWon(gameState, mockTrophyAwarder)
       
-      expect(result.newState.currentTurn).toBe('opponent')
-      expect(result.events).toContain('turn-ended')
+      expect(result.success).toBe(true)
+      expect(result.newGameState.boardStatus).toBe('won')
+      expect(mockTrophyAwarder).toHaveBeenCalled()
+    })
+  })
+
+  describe('handleBoardLost', () => {
+    it('should handle board lost scenario', () => {
+      const gameState = createTestGameState()
+      
+      const result = gameFlowManager.handleBoardLost(gameState)
+      
+      expect(result.success).toBe(true)
+      expect(result.newGameState.gameStatus).toBe('game-over')
+      expect(result.newGameState.boardStatus).toBe('lost')
+    })
+  })
+
+  describe('endTurn', () => {
+    it('should successfully end player turn', () => {
+      const gameState = createTestGameState()
+      
+      const result = gameFlowManager.endTurn(gameState)
+      
+      expect(result.success).toBe(true)
+      expect(result.newGameState.currentTurn).toBe('opponent')
       expect(result.shouldTriggerAI).toBe(true)
     })
 
-    it('should not allow ending turn when not player turn', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'opponent'
-      })
+    it('should fail when not player turn', () => {
+      const gameState = createTestGameState({ currentTurn: 'opponent' })
       
-      const result = gameFlow.endTurn(state)
+      const result = gameFlowManager.endTurn(gameState)
       
-      expect(result.newState).toEqual({})
-      expect(result.events).toEqual([])
-    })
-
-    it('should not allow ending turn when game not playing', () => {
-      const state = createTestGameState({
-        gameStatus: 'character-select',
-        currentTurn: 'player'
-      })
-      
-      const result = gameFlow.endTurn(state)
-      
-      expect(result.newState).toEqual({})
-      expect(result.events).toEqual([])
+      expect(result.success).toBe(false)
+      expect(result.shouldTriggerAI).toBe(false)
     })
   })
 
-  describe('board completion', () => {
-    it('should handle board won with progression delay', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        shopOpen: false
-      })
-      
-      const result = gameFlow.handleBoardWon(state)
-      
-      expect(result.newState.boardStatus).toBe('won')
-      expect(result.events).toContain('board-won')
-      expect(result.nextBoardDelay).toBe(2000)
+  describe('executeAITurn', () => {
+    let mockAI: any
+
+    beforeEach(() => {
+      mockAI = {
+        takeTurn: jest.fn()
+      }
+      // Access the private AI instance through constructor
+      ;(gameFlowManager as any).ai = mockAI
     })
 
-    it('should handle board won when shop is open', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        shopOpen: true
-      })
+    it('should successfully execute AI turn', () => {
+      const gameState = createTestGameState({ currentTurn: 'opponent' })
+      const aiMove = { x: 1, y: 1 }
       
-      const result = gameFlow.handleBoardWon(state)
+      mockAI.takeTurn.mockReturnValue(aiMove)
+      mockRevealTile.mockReturnValue(true)
+      mockCheckBoardStatus.mockReturnValue('in-progress')
       
-      expect(result.newState.boardStatus).toBe('won')
-      expect(result.events).toContain('board-won')
-      expect(result.nextBoardDelay).toBeUndefined()
-    })
-
-    it('should handle board lost', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing'
-      })
+      const mockClue = { handA: { tiles: [] }, handB: { tiles: [] } }
+      mockGenerateClue.mockReturnValue(mockClue)
       
-      const result = gameFlow.handleBoardLost(state)
+      const result = gameFlowManager.executeAITurn(gameState)
       
-      expect(result.newState.gameStatus).toBe('opponent-won')
-      expect(result.newState.boardStatus).toBe('lost')
-      expect(result.events).toContain('board-lost')
+      expect(result.success).toBe(true)
+      expect(result.newGameState.currentTurn).toBe('player')
+      expect(result.newGameState.clues).toContain(mockClue)
+      expect(mockRevealTile).toHaveBeenCalledWith(gameState.board, 1, 1, 'opponent')
     })
   })
 
-  describe('board progression', () => {
-    it('should progress to next board successfully', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        run: {
-          currentLevel: 1,
-          maxLevel: 20,
-          character: 'fighter',
-          trophies: [],
-          gold: 0,
-          upgrades: []
-        }
+  describe('upgrade choice management', () => {
+    it('should track pending upgrade choice', () => {
+      expect(gameFlowManager.isPendingUpgradeChoice()).toBe(false)
+      
+      const gameState = createTestGameState()
+      const mockTileContentHandler = jest.fn().mockReturnValue({
+        updatedRun: gameState.run,
+        triggerUpgradeChoice: true,
+        triggerShop: false,
+        playerDied: false
       })
       
-      const result = gameFlow.progressToNextBoard(state)
+      mockRevealTile.mockReturnValue(true)
+      mockCheckBoardStatus.mockReturnValue('in-progress')
       
-      expect(result.newState.run?.currentLevel).toBeGreaterThan(1)
-      expect(result.events).toContain('next-board')
-    })
-
-    it('should trigger AI if next turn is opponent', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'player',
-        run: {
-          currentLevel: 1,
-          maxLevel: 20,
-          character: 'fighter',
-          trophies: [],
-          gold: 0,
-          upgrades: []
-        }
-      })
+      gameFlowManager.revealTile(gameState, 0, 0, mockTileContentHandler)
       
-      const result = gameFlow.progressToNextBoard(state)
+      expect(gameFlowManager.isPendingUpgradeChoice()).toBe(true)
       
-      // shouldTriggerAI depends on the new turn state from progressToNextLevel
-      expect(typeof result.shouldTriggerAI).toBe('boolean')
-    })
-
-    it('should handle progression errors gracefully', () => {
-      const invalidState = createTestGameState({
-        run: undefined as any
-      })
+      gameFlowManager.clearPendingUpgradeChoice()
       
-      const result = gameFlow.progressToNextBoard(invalidState)
-      
-      expect(result.newState).toEqual({})
-      expect(result.events).toEqual([])
-    })
-  })
-
-  describe('game reset', () => {
-    it('should reset game to character selection', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        shopOpen: true,
-        upgradeChoice: { options: [], description: '' }
-      })
-      
-      const result = gameFlow.resetGame()
-      
-      expect(result.newState.gameStatus).toBe('character-select')
-      expect(result.newState.shopOpen).toBe(false)
-      expect(result.newState.upgradeChoice).toBe(null)
-      expect(result.events).toContain('game-reset')
-    })
-  })
-
-  describe('shop closure handling', () => {
-    it('should trigger board won progression when shop closes after win', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        boardStatus: 'won',
-        shopOpen: false
-      })
-      
-      const result = gameFlow.handleShopClosedAfterWin(state)
-      
-      expect(result.newState.boardStatus).toBe('won')
-      expect(result.events).toContain('board-won')
-    })
-
-    it('should not trigger progression if board not won', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        boardStatus: 'in-progress',
-        shopOpen: false
-      })
-      
-      const result = gameFlow.handleShopClosedAfterWin(state)
-      
-      expect(result.newState).toEqual({})
-      expect(result.events).toEqual([])
-    })
-
-    it('should not trigger progression if shop still open', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        boardStatus: 'won',
-        shopOpen: true
-      })
-      
-      const result = gameFlow.handleShopClosedAfterWin(state)
-      
-      expect(result.newState).toEqual({})
-      expect(result.events).toEqual([])
-    })
-  })
-
-  describe('AI turn conditions', () => {
-    it('should determine when to trigger AI turn', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'opponent',
-        boardStatus: 'in-progress',
-        upgradeChoice: null
-      })
-      
-      const shouldTrigger = gameFlow.shouldTriggerAITurn(state, false)
-      
-      expect(shouldTrigger).toBe(true)
-    })
-
-    it('should not trigger AI during upgrade choice', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'opponent',
-        boardStatus: 'in-progress',
-        upgradeChoice: { options: [], description: '' }
-      })
-      
-      const shouldTrigger = gameFlow.shouldTriggerAITurn(state, false)
-      
-      expect(shouldTrigger).toBe(false)
-    })
-
-    it('should not trigger AI when pending upgrade choice', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'opponent',
-        boardStatus: 'in-progress',
-        upgradeChoice: null
-      })
-      
-      const shouldTrigger = gameFlow.shouldTriggerAITurn(state, true)
-      
-      expect(shouldTrigger).toBe(false)
-    })
-
-    it('should not trigger AI on player turn', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'player',
-        boardStatus: 'in-progress',
-        upgradeChoice: null
-      })
-      
-      const shouldTrigger = gameFlow.shouldTriggerAITurn(state, false)
-      
-      expect(shouldTrigger).toBe(false)
-    })
-  })
-
-  describe('game state validation', () => {
-    it('should identify playable game state', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        boardStatus: 'in-progress'
-      })
-      
-      const isPlayable = gameFlow.isGamePlayable(state)
-      
-      expect(isPlayable).toBe(true)
-    })
-
-    it('should identify non-playable states', () => {
-      const nonPlayableStates = [
-        { gameStatus: 'character-select' as GameStatus, boardStatus: 'in-progress' },
-        { gameStatus: 'playing' as GameStatus, boardStatus: 'won' },
-        { gameStatus: 'playing' as GameStatus, boardStatus: 'lost' },
-        { gameStatus: 'opponent-won' as GameStatus, boardStatus: 'in-progress' }
-      ]
-      
-      nonPlayableStates.forEach(stateOverride => {
-        const state = createTestGameState(stateOverride)
-        const isPlayable = gameFlow.isGamePlayable(state)
-        expect(isPlayable).toBe(false)
-      })
-    })
-  })
-
-  describe('game phase detection', () => {
-    it('should identify character selection phase', () => {
-      const state = createTestGameState({
-        gameStatus: 'character-select'
-      })
-      
-      const phase = gameFlow.getCurrentPhase(state)
-      
-      expect(phase).toBe('Character Selection')
-    })
-
-    it('should identify shopping phase', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        shopOpen: true
-      })
-      
-      const phase = gameFlow.getCurrentPhase(state)
-      
-      expect(phase).toBe('Shopping')
-    })
-
-    it('should identify upgrade choice phase', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        shopOpen: false,
-        upgradeChoice: { options: [], description: '' }
-      })
-      
-      const phase = gameFlow.getCurrentPhase(state)
-      
-      expect(phase).toBe('Choosing Upgrade')
-    })
-
-    it('should identify victory phase', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        boardStatus: 'won',
-        shopOpen: false,
-        upgradeChoice: null
-      })
-      
-      const phase = gameFlow.getCurrentPhase(state)
-      
-      expect(phase).toBe('Victory!')
-    })
-
-    it('should identify defeat phase', () => {
-      const state = createTestGameState({
-        gameStatus: 'playing',
-        boardStatus: 'lost',
-        shopOpen: false,
-        upgradeChoice: null
-      })
-      
-      const phase = gameFlow.getCurrentPhase(state)
-      
-      expect(phase).toBe('Defeat!')
-    })
-
-    it('should identify turn-based play phases', () => {
-      const playerTurnState = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'player',
-        boardStatus: 'in-progress',
-        shopOpen: false,
-        upgradeChoice: null,
-        run: { currentLevel: 5, trophies: [], character: 'fighter' }
-      })
-      
-      const opponentTurnState = createTestGameState({
-        gameStatus: 'playing',
-        currentTurn: 'opponent',
-        boardStatus: 'in-progress',
-        shopOpen: false,
-        upgradeChoice: null,
-        run: { currentLevel: 3, trophies: [], character: 'cleric' }
-      })
-      
-      expect(gameFlow.getCurrentPhase(playerTurnState)).toBe('Level 5 - Your Turn')
-      expect(gameFlow.getCurrentPhase(opponentTurnState)).toBe('Level 3 - AI Turn')
-    })
-
-    it('should identify end game phases', () => {
-      const gameOverState = createTestGameState({
-        gameStatus: 'opponent-won'
-      })
-      
-      const runCompleteState = createTestGameState({
-        gameStatus: 'run-complete'
-      })
-      
-      expect(gameFlow.getCurrentPhase(gameOverState)).toBe('Game Over')
-      expect(gameFlow.getCurrentPhase(runCompleteState)).toBe('Run Complete!')
-    })
-  })
-
-  describe('state transition validation', () => {
-    it('should validate legal state transitions', () => {
-      expect(gameFlow.canTransitionTo(
-        createTestGameState({ gameStatus: 'character-select' }),
-        'playing'
-      )).toBe(true)
-      
-      expect(gameFlow.canTransitionTo(
-        createTestGameState({ gameStatus: 'playing' }),
-        'opponent-won'
-      )).toBe(true)
-      
-      expect(gameFlow.canTransitionTo(
-        createTestGameState({ gameStatus: 'opponent-won' }),
-        'character-select'
-      )).toBe(true)
-    })
-
-    it('should reject illegal state transitions', () => {
-      expect(gameFlow.canTransitionTo(
-        createTestGameState({ gameStatus: 'character-select' }),
-        'opponent-won'
-      )).toBe(false)
-      
-      expect(gameFlow.canTransitionTo(
-        createTestGameState({ gameStatus: 'opponent-won' }),
-        'playing'
-      )).toBe(false)
+      expect(gameFlowManager.isPendingUpgradeChoice()).toBe(false)
     })
   })
 })
