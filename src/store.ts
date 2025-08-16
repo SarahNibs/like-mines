@@ -252,37 +252,6 @@ class GameStore {
     return this.tileContentManager.handleTileContent(tile, this.state.run, this.state.board)
   }
 
-  // Execute the special actions from tile content handling
-  private executeTileContentActions(result: any): void {
-    if (result.triggerUpgradeChoice) {
-      this.triggerUpgradeChoice()
-      console.log(result.message)
-      this.setState({ run: result.updatedRun })
-    } else if (result.triggerShop) {
-      console.log(result.message)
-      this.setState({ run: result.updatedRun })
-      this.openShop().catch(console.error) // Call after setState to ensure run state is updated first
-    } else if (result.playerDied) {
-      console.log(result.message)
-      this.setState({ 
-        run: result.updatedRun,
-        gameStatus: 'player-died' 
-      })
-      return
-    } else {
-      // Log the result message and update run state
-      console.log(result.message)
-      this.setState({ run: result.updatedRun })
-    }
-    
-    // Update board if it was modified (e.g., RICH effect)
-    if (result.boardModified) {
-      this.setState({ 
-        board: { ...this.state.board },
-        run: result.updatedRun 
-      })
-    }
-  }
 
   // Use item from inventory
   useInventoryItem(index: number): void {
@@ -361,31 +330,6 @@ class GameStore {
     }
   }
   
-  // Handle crystal ball result with tile revelation and content processing
-  private handleCrystalBallResult(result: ItemUsageResult): void {
-    // The InventoryManager handles revealing the tile, but we need to handle tile content
-    // and check for board completion
-    const revealPos = (result as any).revealedPosition
-    if (revealPos) {
-      const tile = getTileAt(this.state.board, revealPos.x, revealPos.y)
-      if (tile) {
-        // Process tile content through TileContentManager
-        this.handleTileContent(tile)
-        
-        // Check for board completion
-        const newBoardStatus = checkBoardStatus(this.state.board)
-        if (newBoardStatus === 'won') {
-          this.handleBoardWon()
-        }
-      }
-    }
-    
-    // Update states
-    this.setState({ 
-      run: result.updatedRun,
-      board: { ...this.state.board }
-    })
-  }
 
 
 
@@ -658,42 +602,9 @@ class GameStore {
     })
   }
 
-  // Update all existing detector scan results (called when tile ownership changes)
+  // Update all existing detector scan results (delegated to ToolModeManager)
   private updateDetectorScans(): void {
-    const board = this.state.board
-    
-    // Find all tiles with detector scans and update their results
-    for (let y = 0; y < board.height; y++) {
-      for (let x = 0; x < board.width; x++) {
-        const tile = board.tiles[y][x]
-        
-        if (tile.detectorScan) {
-          // Recalculate scan for this tile
-          let playerAdjacent = 0
-          let opponentAdjacent = 0
-          let neutralAdjacent = 0
-          
-          // Check all 9 positions in 3x3 area (including center)
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const adjTile = getTileAt(board, x + dx, y + dy)
-              if (adjTile) {
-                if (adjTile.owner === 'player') playerAdjacent++
-                else if (adjTile.owner === 'opponent') opponentAdjacent++
-                else if (adjTile.owner === 'neutral') neutralAdjacent++
-              }
-            }
-          }
-          
-          // Update the scan results
-          tile.detectorScan = {
-            playerAdjacent,
-            opponentAdjacent,
-            neutralAdjacent
-          }
-        }
-      }
-    }
+    this.toolModeManager.updateDetectorScans(this.state.board)
   }
 
   // Shop functionality (delegated to ShopManager and UIStateManager)
