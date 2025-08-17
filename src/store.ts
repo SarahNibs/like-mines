@@ -369,43 +369,30 @@ class GameStore {
     const item = this.state.run.inventory[index]
     if (!item) return
     
-    // Handle special items
-    if (item.id === 'crystal-ball') {
-      // Remove the crystal ball BEFORE revealing the tile to free up inventory space
-      removeItemFromInventory(this.state.run, index)
-      this.setState({ run: { ...this.state.run } })
-      this.useCrystalBall()
-      return // Exit early to avoid removing the item again
-    } else if (item.id === 'transmute') {
+    // Try to use item through InventoryManager first
+    const result = this.inventoryManager.useInventoryItem(
+      this.state.run,
+      index,
+      (run, item) => applyItemEffect(run, item),
+      (run, itemIndex) => removeItemFromInventory(run, itemIndex),
+      () => this.grantAdditionalClue(),
+      () => this.useCrystalBall(),
+      () => this.useWhistle()
+    )
+    
+    if (result.success) {
+      // InventoryManager handled the item successfully
+      this.setState({ run: result.newRun })
+      return
+    }
+    
+    // Handle special items that require store-specific logic
+    if (item.id === 'transmute') {
       this.startTransmuteMode(index)
       return // Don't consume the item yet
     } else if (item.id === 'detector') {
       this.startDetectorMode(index)
       return // Don't consume the item yet
-    } else if (item.id === 'ward') {
-      // Stack ward bonuses
-      this.state.run.temporaryBuffs.ward = (this.state.run.temporaryBuffs.ward || 0) + 4
-      if (!this.state.run.upgrades.includes('ward-temp')) {
-        this.state.run.upgrades.push('ward-temp') // Add to upgrades list for display
-      }
-      console.log(`Ward activated! +4 defense (total: +${this.state.run.temporaryBuffs.ward}) for your next fight.`)
-    } else if (item.id === 'blaze') {
-      // Stack blaze bonuses
-      this.state.run.temporaryBuffs.blaze = (this.state.run.temporaryBuffs.blaze || 0) + 5
-      if (!this.state.run.upgrades.includes('blaze-temp')) {
-        this.state.run.upgrades.push('blaze-temp') // Add to upgrades list for display
-      }
-      console.log(`Blaze activated! +5 attack (total: +${this.state.run.temporaryBuffs.blaze}) for your next fight.`)
-    } else if (item.id === 'protection') {
-      // Stack protection charges
-      this.state.run.temporaryBuffs.protection = (this.state.run.temporaryBuffs.protection || 0) + 1
-      console.log(`Protection activated! Next ${this.state.run.temporaryBuffs.protection} opponent/neutral reveal(s) won't end your turn.`)
-    } else if (item.id === 'clue') {
-      // Grant additional clue
-      this.grantAdditionalClue()
-      console.log('Clue used! You have gained an additional clue.')
-    } else if (item.id === 'whistle') {
-      this.useWhistle()
     } else if (item.id === 'key') {
       this.startKeyMode(index)
       return // Don't consume the item yet
@@ -416,12 +403,12 @@ class GameStore {
       this.useRing(index)
       return // Don't consume the item yet
     } else {
+      // Fallback for unknown items
       const message = applyItemEffect(this.state.run, item)
       console.log(message)
+      removeItemFromInventory(this.state.run, index)
+      this.setState({ run: { ...this.state.run } })
     }
-    
-    removeItemFromInventory(this.state.run, index)
-    this.setState({ run: { ...this.state.run } })
   }
 
   // Whistle functionality - redistribute all monsters to random unrevealed tiles

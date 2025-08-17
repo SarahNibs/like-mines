@@ -22,6 +22,8 @@ export class InventoryManager {
    * @param applyItemEffectCallback Callback to apply item effects
    * @param removeItemFromInventoryCallback Callback to remove items from inventory
    * @param generateClueCallback Callback to generate new clues
+   * @param useCrystalBallCallback Callback to use crystal ball
+   * @param useWhistleCallback Callback to use whistle
    * @returns Result of item usage
    */
   useInventoryItem(
@@ -29,7 +31,9 @@ export class InventoryManager {
     itemIndex: number,
     applyItemEffectCallback: (run: RunState, item: ItemData) => string,
     removeItemFromInventoryCallback: (run: RunState, index: number) => void,
-    generateClueCallback?: () => void
+    generateClueCallback?: () => void,
+    useCrystalBallCallback?: () => void,
+    useWhistleCallback?: () => void
   ): InventoryResult {
     const item = currentRun.inventory[itemIndex]
     
@@ -49,6 +53,9 @@ export class InventoryManager {
         // Crystal Ball reveals a random unrevealed player tile
         // Remove the item BEFORE revealing to free up inventory space
         removeItemFromInventoryCallback(run, itemIndex)
+        if (useCrystalBallCallback) {
+          useCrystalBallCallback()
+        }
         
         return {
           newRun: run,
@@ -68,7 +75,87 @@ export class InventoryManager {
         return {
           newRun: run,
           success: true,
-          message: 'Generated a new clue'
+          message: 'Clue used! You have gained an additional clue.'
+        }
+      }
+      
+      case 'ward': {
+        // Stack ward bonuses
+        if (!run.temporaryBuffs) run.temporaryBuffs = {}
+        run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 4
+        if (!run.upgrades.includes('ward-temp')) {
+          run.upgrades = [...run.upgrades, 'ward-temp'] // Add to upgrades list for display
+        }
+        removeItemFromInventoryCallback(run, itemIndex)
+        
+        const message = `Ward activated! +4 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`
+        console.log(message)
+        
+        return {
+          newRun: run,
+          success: true,
+          message
+        }
+      }
+      
+      case 'blaze': {
+        // Stack blaze bonuses
+        if (!run.temporaryBuffs) run.temporaryBuffs = {}
+        run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
+        if (!run.upgrades.includes('blaze-temp')) {
+          run.upgrades = [...run.upgrades, 'blaze-temp'] // Add to upgrades list for display
+        }
+        removeItemFromInventoryCallback(run, itemIndex)
+        
+        const message = `Blaze activated! +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`
+        console.log(message)
+        
+        return {
+          newRun: run,
+          success: true,
+          message
+        }
+      }
+      
+      case 'protection': {
+        // Stack protection charges
+        if (!run.temporaryBuffs) run.temporaryBuffs = {}
+        run.temporaryBuffs.protection = (run.temporaryBuffs.protection || 0) + 1
+        removeItemFromInventoryCallback(run, itemIndex)
+        
+        const message = `Protection activated! Next ${run.temporaryBuffs.protection} opponent/neutral reveal(s) won't end your turn.`
+        console.log(message)
+        
+        return {
+          newRun: run,
+          success: true,
+          message
+        }
+      }
+      
+      case 'whistle': {
+        removeItemFromInventoryCallback(run, itemIndex)
+        if (useWhistleCallback) {
+          useWhistleCallback()
+        }
+        
+        return {
+          newRun: run,
+          success: true,
+          message: 'Whistle used - redistributing monsters'
+        }
+      }
+      
+      // Items that need special handling by the store (return false to indicate store should handle)
+      case 'transmute':
+      case 'detector':
+      case 'key':
+      case 'staff-of-fireballs':
+      case 'ring-of-true-seeing': {
+        return {
+          newRun: currentRun,
+          success: false,
+          message: 'Item requires special handling by store'
         }
       }
       

@@ -48,11 +48,15 @@ describe('InventoryManager', () => {
     })
 
     const mockGenerateClue = jest.fn()
+    const mockUseCrystalBall = jest.fn()
+    const mockUseWhistle = jest.fn()
 
     beforeEach(() => {
       mockApplyItemEffect.mockClear()
       mockRemoveFromInventory.mockClear()
       mockGenerateClue.mockClear()
+      mockUseCrystalBall.mockClear()
+      mockUseWhistle.mockClear()
     })
 
     it('should use crystal ball and indicate tile reveal needed', () => {
@@ -61,13 +65,16 @@ describe('InventoryManager', () => {
         0, // Crystal ball
         mockApplyItemEffect,
         mockRemoveFromInventory,
-        mockGenerateClue
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
       )
 
       expect(result.success).toBe(true)
       expect(result.shouldRevealTile).toBe(true)
       expect(result.message).toContain('Crystal Ball used')
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
+      expect(mockUseCrystalBall).toHaveBeenCalled()
     })
 
     it('should use clue item and trigger clue generation', () => {
@@ -76,11 +83,13 @@ describe('InventoryManager', () => {
         1, // Clue
         mockApplyItemEffect,
         mockRemoveFromInventory,
-        mockGenerateClue
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
       )
 
       expect(result.success).toBe(true)
-      expect(result.message).toContain('Generated a new clue')
+      expect(result.message).toContain('gained an additional clue')
       expect(mockGenerateClue).toHaveBeenCalled()
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 1)
     })
@@ -97,7 +106,9 @@ describe('InventoryManager', () => {
         0,
         mockApplyItemEffect,
         mockRemoveFromInventory,
-        mockGenerateClue
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
       )
 
       expect(result.success).toBe(true)
@@ -111,7 +122,9 @@ describe('InventoryManager', () => {
         2, // Empty slot
         mockApplyItemEffect,
         mockRemoveFromInventory,
-        mockGenerateClue
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
       )
 
       expect(result.success).toBe(false)
@@ -125,10 +138,131 @@ describe('InventoryManager', () => {
         99, // Invalid index
         mockApplyItemEffect,
         mockRemoveFromInventory,
-        mockGenerateClue
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
       )
 
       expect(result.success).toBe(false)
+      expect(mockRemoveFromInventory).not.toHaveBeenCalled()
+    })
+
+    it('should use ward item and apply defense buff', () => {
+      const wardItem = { id: 'ward', name: 'Ward', description: 'Defense buff' } as ItemData
+      const runWithWard = {
+        ...mockRun,
+        inventory: [wardItem, null, null],
+        temporaryBuffs: {}
+      }
+
+      const result = manager.useInventoryItem(
+        runWithWard,
+        0,
+        mockApplyItemEffect,
+        mockRemoveFromInventory,
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Ward activated! +4 defense')
+      expect(result.newRun.temporaryBuffs?.ward).toBe(4)
+      expect(result.newRun.upgrades).toContain('ward-temp')
+      expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
+    })
+
+    it('should use blaze item and apply attack buff', () => {
+      const blazeItem = { id: 'blaze', name: 'Blaze', description: 'Attack buff' } as ItemData
+      const runWithBlaze = {
+        ...mockRun,
+        inventory: [blazeItem, null, null],
+        temporaryBuffs: {}
+      }
+
+      const result = manager.useInventoryItem(
+        runWithBlaze,
+        0,
+        mockApplyItemEffect,
+        mockRemoveFromInventory,
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Blaze activated! +5 attack')
+      expect(result.newRun.temporaryBuffs?.blaze).toBe(5)
+      expect(result.newRun.upgrades).toContain('blaze-temp')
+      expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
+    })
+
+    it('should use protection item and add protection charges', () => {
+      const protectionItem = { id: 'protection', name: 'Protection', description: 'Protection' } as ItemData
+      const runWithProtection = {
+        ...mockRun,
+        inventory: [protectionItem, null, null],
+        temporaryBuffs: {}
+      }
+
+      const result = manager.useInventoryItem(
+        runWithProtection,
+        0,
+        mockApplyItemEffect,
+        mockRemoveFromInventory,
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Protection activated!')
+      expect(result.newRun.temporaryBuffs?.protection).toBe(1)
+      expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
+    })
+
+    it('should use whistle item and trigger whistle callback', () => {
+      const whistleItem = { id: 'whistle', name: 'Whistle', description: 'Redistributes monsters' } as ItemData
+      const runWithWhistle = {
+        ...mockRun,
+        inventory: [whistleItem, null, null]
+      }
+
+      const result = manager.useInventoryItem(
+        runWithWhistle,
+        0,
+        mockApplyItemEffect,
+        mockRemoveFromInventory,
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Whistle used - redistributing monsters')
+      expect(mockUseWhistle).toHaveBeenCalled()
+      expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
+    })
+
+    it('should return false for items requiring special store handling', () => {
+      const staffItem = { id: 'staff-of-fireballs', name: 'Staff', description: 'Special item' } as ItemData
+      const runWithStaff = {
+        ...mockRun,
+        inventory: [staffItem, null, null]
+      }
+
+      const result = manager.useInventoryItem(
+        runWithStaff,
+        0,
+        mockApplyItemEffect,
+        mockRemoveFromInventory,
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
+      )
+
+      expect(result.success).toBe(false)
+      expect(result.message).toContain('requires special handling')
       expect(mockRemoveFromInventory).not.toHaveBeenCalled()
     })
   })
