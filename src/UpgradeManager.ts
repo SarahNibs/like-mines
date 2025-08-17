@@ -1,9 +1,11 @@
 /**
  * UpgradeManager - Handles upgrade application, effects, and choice management
  * Extracted from store.ts for better organization
+ * Now supports character-specific upgrade modifications
  */
 
 import { RunState, Board, TileContent, getTileAt } from './types'
+import { CharacterManager } from './CharacterManager'
 
 export interface UpgradeChoice {
   choices: Array<{ id: string, name: string, description: string }>
@@ -27,6 +29,11 @@ export interface UpgradeChoiceResult {
 }
 
 export class UpgradeManager {
+  private characterManager: CharacterManager
+
+  constructor() {
+    this.characterManager = new CharacterManager()
+  }
   
   /**
    * Apply an upgrade to the run state
@@ -36,6 +43,25 @@ export class UpgradeManager {
    */
   applyUpgrade(currentRun: RunState, upgradeId: string): UpgradeResult {
     const run = { ...currentRun }
+    
+    // Get character-specific modifications if character is available
+    let characterModification = {}
+    if (run.character) {
+      characterModification = this.characterManager.modifyUpgradeApplication(
+        run.character,
+        upgradeId,
+        currentRun
+      )
+      
+      // Check if upgrade is blocked for this character
+      if (characterModification.blocked) {
+        return {
+          newRun: currentRun,
+          success: false,
+          message: `${upgradeId} upgrade is not available for ${run.character.name}`
+        }
+      }
+    }
     
     // For repeatable upgrades, add multiple instances; for non-repeatable, only add once
     const isRepeatable = [
@@ -54,7 +80,7 @@ export class UpgradeManager {
       }
     }
     
-    // Apply upgrade effects
+    // Apply base upgrade effects
     switch (upgradeId) {
       case 'attack':
         run.attack += 2
@@ -90,10 +116,32 @@ export class UpgradeManager {
         }
     }
     
+    // Apply character-specific bonuses
+    if (characterModification.statBonuses) {
+      const bonuses = characterModification.statBonuses
+      if (bonuses.attack) run.attack += bonuses.attack
+      if (bonuses.defense) run.defense += bonuses.defense
+      if (bonuses.maxHp) run.maxHp += bonuses.maxHp
+      if (bonuses.loot) run.loot += bonuses.loot
+      if (bonuses.maxInventory) {
+        run.maxInventory += bonuses.maxInventory
+        // Add extra inventory slots
+        for (let i = 0; i < bonuses.maxInventory; i++) {
+          run.inventory.push(null)
+        }
+      }
+    }
+    
+    // Build result message
+    let message = `Applied ${upgradeId} upgrade`
+    if (characterModification.customMessage) {
+      message += ` - ${characterModification.customMessage}`
+    }
+    
     return {
       newRun: run,
       success: true,
-      message: `Applied ${upgradeId} upgrade`
+      message
     }
   }
 
@@ -314,5 +362,13 @@ export class UpgradeManager {
    */
   shouldTriggerRichUpgrade(currentRun: RunState): boolean {
     return this.getUpgradeCount(currentRun, 'rich') > 0
+  }
+
+  /**
+   * Get access to the character manager for other systems
+   * @returns CharacterManager instance
+   */
+  getCharacterManager(): CharacterManager {
+    return this.characterManager
   }
 }

@@ -124,6 +124,7 @@ export interface RunState {
   upgrades: string[] // Array of upgrade IDs that have been acquired
   trophies: Trophy[] // Player's trophy collection
   characterId?: string // Selected character ID for display
+  character?: import('./characters').Character // Full character object for behavior access
   temporaryBuffs: {
     ward?: number // Defense boost for next fight
     blaze?: number // Attack boost for next fight

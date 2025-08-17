@@ -4,16 +4,39 @@
 
 import { UpgradeManager } from '../UpgradeManager'
 import { RunState, Board, TileContent, TileOwner } from '../types'
+import { Character } from '../characters'
 
 describe('UpgradeManager', () => {
   let manager: UpgradeManager
   let mockRun: RunState
   let mockBoard: Board
+  let fighterCharacter: Character
+  let touristCharacter: Character
 
   beforeEach(() => {
     manager = new UpgradeManager()
+    
+    fighterCharacter = {
+      id: 'fighter',
+      name: 'FIGHTER',
+      icon: '⚔️',
+      description: 'Combat specialist',
+      startingUpgrades: ['attack', 'defense'],
+      startingItems: []
+    }
+
+    touristCharacter = {
+      id: 'tourist',
+      name: 'TOURIST',
+      icon: '🎒',
+      description: 'Shopping enthusiast',
+      startingUpgrades: ['rich'],
+      startingItems: []
+    }
+    
     mockRun = {
       currentLevel: 1,
+      maxLevel: 25,
       gold: 50,
       upgrades: [],
       hp: 10,
@@ -24,14 +47,8 @@ describe('UpgradeManager', () => {
       maxInventory: 3,
       inventory: [null, null, null],
       trophies: [],
-      character: {
-        id: 'fighter',
-        name: 'Fighter',
-        description: 'A brave warrior',
-        startingHp: 10,
-        startingItems: [],
-        startingUpgrades: []
-      }
+      characterId: 'fighter',
+      temporaryBuffs: {}
     }
 
     mockBoard = {
@@ -288,6 +305,63 @@ describe('UpgradeManager', () => {
       }
 
       expect(manager.shouldTriggerRichUpgrade(runWithoutRich)).toBe(false)
+    })
+  })
+
+  describe('Character-specific upgrade behaviors', () => {
+    it('should apply fighter bonus to attack upgrades', () => {
+      const runWithFighter = {
+        ...mockRun,
+        character: fighterCharacter
+      }
+
+      const result = manager.applyUpgrade(runWithFighter, 'attack')
+
+      expect(result.success).toBe(true)
+      expect(result.newRun.attack).toBe(8) // 5 + 2 (base) + 1 (fighter bonus)
+      expect(result.message).toContain('Fighter bonus: +1 additional attack!')
+    })
+
+    it('should apply fighter bonus to defense upgrades', () => {
+      const runWithFighter = {
+        ...mockRun,
+        character: fighterCharacter
+      }
+
+      const result = manager.applyUpgrade(runWithFighter, 'defense')
+
+      expect(result.success).toBe(true)
+      expect(result.newRun.defense).toBe(4) // 2 + 1 (base) + 1 (fighter bonus)
+      expect(result.message).toContain('Fighter bonus: +1 additional defense!')
+    })
+
+    it('should not apply fighter bonuses to other upgrades', () => {
+      const runWithFighter = {
+        ...mockRun,
+        character: fighterCharacter
+      }
+
+      const result = manager.applyUpgrade(runWithFighter, 'healthy')
+
+      expect(result.success).toBe(true)
+      expect(result.newRun.maxHp).toBe(35) // 10 + 25 (base), no bonus
+      expect(result.message).not.toContain('Fighter bonus')
+    })
+
+    it('should work normally without character object', () => {
+      const result = manager.applyUpgrade(mockRun, 'attack')
+
+      expect(result.success).toBe(true)
+      expect(result.newRun.attack).toBe(7) // 5 + 2 (base only)
+      expect(result.message).toBe('Applied attack upgrade')
+    })
+
+    it('should provide access to character manager', () => {
+      const characterManager = manager.getCharacterManager()
+      
+      expect(characterManager).toBeDefined()
+      expect(characterManager.shouldForceShopOnEveryLevel(touristCharacter)).toBe(true)
+      expect(characterManager.canCharacterLearnSpells(fighterCharacter)).toBe(false)
     })
   })
 })

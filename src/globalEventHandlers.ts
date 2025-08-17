@@ -39,27 +39,14 @@ export function setupGlobalEventHandlers(
     // Debug shortcuts
     if (key === 'g') {
       // Gain +1 gold
-      const state = gameStore.getState()
-      gameStore.setState({ 
-        run: { 
-          ...state.run, 
-          gold: state.run.gold + 1 
-        } 
-      })
       console.log('Debug: +1 gold')
+      gameStore.debugAddGold(1)
     }
     
     if (key === 'h') {
       // Gain +10 health (not above max)
-      const state = gameStore.getState()
-      const newHp = Math.min(state.run.maxHp, state.run.hp + 10)
-      gameStore.setState({ 
-        run: { 
-          ...state.run, 
-          hp: newHp 
-        } 
-      })
-      console.log(`Debug: +${newHp - state.run.hp} health`)
+      console.log('Debug: +10 health')
+      gameStore.debugAddHealth(10)
     }
     
     if (key === 'u') {
@@ -77,7 +64,7 @@ export function setupGlobalEventHandlers(
     if (key === 'w') {
       // Win board
       console.log('Debug: Winning board')
-      gameStore.revealAllPlayerTiles()
+      gameStore.debugRevealAllPlayerTiles()
     }
   })
 }

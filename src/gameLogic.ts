@@ -97,8 +97,9 @@ export function createCharacterRunState(characterId: string): RunState {
   // Create base run state
   const runState = createInitialRunState()
   
-  // Store character ID for display
+  // Store character ID for display and full character object for behavior access
   runState.characterId = characterId
+  runState.character = character
   
   // Apply character-specific upgrades and their effects
   runState.upgrades = [...character.startingUpgrades]
