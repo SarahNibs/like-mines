@@ -15,6 +15,11 @@ export interface InventoryResult {
     type: 'transmute' | 'detector' | 'key' | 'staff' | 'ring'
     itemIndex: number
     consumeItem: boolean
+    parameters?: {
+      target?: { x: number, y: number }
+      damage?: number
+      charges?: number
+    }
   }
 }
 
@@ -382,11 +387,13 @@ export class InventoryManager {
    * Trigger a behavior without using an inventory item (for spells, upgrades, etc.)
    * @param behaviorType Type of behavior to trigger
    * @param source Description of what triggered this behavior
+   * @param parameters Optional parameters for the behavior
    * @returns Behavior result
    */
   triggerBehavior(
     behaviorType: 'transmute' | 'detector' | 'key' | 'staff' | 'ring',
-    source: string = 'unknown'
+    source: string = 'unknown',
+    parameters?: { target?: { x: number, y: number }, damage?: number, charges?: number }
   ): InventoryResult {
     return {
       newRun: {} as RunState, // Will be ignored when triggerBehavior is present
@@ -395,7 +402,118 @@ export class InventoryManager {
       triggerBehavior: {
         type: behaviorType,
         itemIndex: -1, // -1 indicates not from inventory
-        consumeItem: false
+        consumeItem: false,
+        parameters
+      }
+    }
+  }
+
+  /**
+   * Use staff of fireballs at a specific target
+   * @param currentRun Current run state
+   * @param itemIndex Index of staff item
+   * @param target Target coordinates
+   * @param damage Damage to deal
+   * @returns Result of staff usage
+   */
+  useStaffAt(
+    currentRun: RunState,
+    itemIndex: number,
+    target: { x: number, y: number },
+    damage: number = 6
+  ): InventoryResult {
+    const item = currentRun.inventory[itemIndex]
+    
+    if (!item || item.id !== 'staff-of-fireballs' || !item.multiUse) {
+      return {
+        newRun: currentRun,
+        success: false,
+        message: 'Invalid staff item'
+      }
+    }
+
+    const run = { ...currentRun }
+    
+    // Use one charge
+    const updatedItem = {
+      ...item,
+      multiUse: {
+        ...item.multiUse,
+        currentUses: item.multiUse.currentUses - 1
+      }
+    }
+    
+    run.inventory[itemIndex] = updatedItem
+    
+    // Remove if depleted
+    if (updatedItem.multiUse.currentUses <= 0) {
+      run.inventory[itemIndex] = null
+      console.log('Staff of Fireballs is depleted and removed from inventory')
+    }
+    
+    return {
+      newRun: run,
+      success: true,
+      message: `Staff deals ${damage} damage at (${target.x}, ${target.y})! ${Math.max(0, updatedItem.multiUse.currentUses)} uses remaining.`,
+      triggerBehavior: {
+        type: 'staff',
+        itemIndex,
+        consumeItem: updatedItem.multiUse.currentUses <= 0,
+        parameters: { target, damage }
+      }
+    }
+  }
+
+  /**
+   * Use ring of true seeing at a specific target
+   * @param currentRun Current run state
+   * @param itemIndex Index of ring item
+   * @param target Target coordinates
+   * @returns Result of ring usage
+   */
+  useRingAt(
+    currentRun: RunState,
+    itemIndex: number,
+    target: { x: number, y: number }
+  ): InventoryResult {
+    const item = currentRun.inventory[itemIndex]
+    
+    if (!item || item.id !== 'ring-of-true-seeing' || !item.multiUse) {
+      return {
+        newRun: currentRun,
+        success: false,
+        message: 'Invalid ring item'
+      }
+    }
+
+    const run = { ...currentRun }
+    
+    // Use one charge
+    const updatedItem = {
+      ...item,
+      multiUse: {
+        ...item.multiUse,
+        currentUses: item.multiUse.currentUses - 1
+      }
+    }
+    
+    run.inventory[itemIndex] = updatedItem
+    
+    // Remove if depleted
+    if (updatedItem.multiUse.currentUses <= 0) {
+      run.inventory[itemIndex] = null
+      console.log('Ring of True Seeing is depleted and removed from inventory')
+    }
+    
+    return {
+      newRun: run,
+      success: true,
+      message: `Ring reveals tile at (${target.x}, ${target.y})! ${Math.max(0, updatedItem.multiUse.currentUses)} uses remaining.`,
+      triggerBehavior: {
+        type: 'ring',
+        itemIndex,
+        consumeItem: updatedItem.multiUse.currentUses <= 0,
+        parameters: { target }
       }
     }
   }

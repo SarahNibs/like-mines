@@ -551,5 +551,150 @@ describe('InventoryManager', () => {
       expect(result.success).toBe(true)
       expect(result.message).toBe('key activated by unknown')
     })
+
+    it('should trigger behavior with parameters', () => {
+      const result = manager.triggerBehavior('staff', 'wizard spell', { 
+        target: { x: 5, y: 3 }, 
+        damage: 8 
+      })
+      
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('staff activated by wizard spell')
+      expect(result.triggerBehavior?.parameters).toEqual({
+        target: { x: 5, y: 3 },
+        damage: 8
+      })
+    })
+  })
+
+  describe('useStaffAt', () => {
+    it('should use staff at target location and consume charge', () => {
+      const staff = {
+        id: 'staff-of-fireballs',
+        name: 'Staff of Fireballs',
+        description: 'Deals damage',
+        multiUse: { maxUses: 3, currentUses: 3 }
+      } as ItemData
+
+      const runWithStaff = {
+        ...mockRun,
+        inventory: [staff, null, null]
+      }
+
+      const result = manager.useStaffAt(runWithStaff, 0, { x: 5, y: 7 }, 6)
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Staff deals 6 damage at (5, 7)')
+      expect(result.message).toContain('2 uses remaining')
+      expect(result.newRun.inventory[0]?.multiUse?.currentUses).toBe(2)
+      expect(result.triggerBehavior).toEqual({
+        type: 'staff',
+        itemIndex: 0,
+        consumeItem: false,
+        parameters: { target: { x: 5, y: 7 }, damage: 6 }
+      })
+    })
+
+    it('should remove staff when depleted', () => {
+      const staff = {
+        id: 'staff-of-fireballs',
+        name: 'Staff of Fireballs',
+        description: 'Deals damage',
+        multiUse: { maxUses: 3, currentUses: 1 }
+      } as ItemData
+
+      const runWithStaff = {
+        ...mockRun,
+        inventory: [staff, null, null]
+      }
+
+      const result = manager.useStaffAt(runWithStaff, 0, { x: 2, y: 3 }, 6)
+
+      expect(result.success).toBe(true)
+      expect(result.newRun.inventory[0]).toBe(null)
+      expect(result.triggerBehavior?.consumeItem).toBe(true)
+    })
+
+    it('should fail with invalid staff item', () => {
+      const result = manager.useStaffAt(mockRun, 0, { x: 1, y: 1 }, 6) // Crystal ball, not staff
+
+      expect(result.success).toBe(false)
+      expect(result.message).toBe('Invalid staff item')
+    })
+
+    it('should use default damage if not specified', () => {
+      const staff = {
+        id: 'staff-of-fireballs',
+        name: 'Staff of Fireballs',
+        description: 'Deals damage',
+        multiUse: { maxUses: 3, currentUses: 2 }
+      } as ItemData
+
+      const runWithStaff = {
+        ...mockRun,
+        inventory: [staff, null, null]
+      }
+
+      const result = manager.useStaffAt(runWithStaff, 0, { x: 1, y: 1 }) // No damage parameter
+
+      expect(result.success).toBe(true)
+      expect(result.triggerBehavior?.parameters?.damage).toBe(6)
+    })
+  })
+
+  describe('useRingAt', () => {
+    it('should use ring at target location and consume charge', () => {
+      const ring = {
+        id: 'ring-of-true-seeing',
+        name: 'Ring of True Seeing',
+        description: 'Reveals contents',
+        multiUse: { maxUses: 6, currentUses: 4 }
+      } as ItemData
+
+      const runWithRing = {
+        ...mockRun,
+        inventory: [ring, null, null]
+      }
+
+      const result = manager.useRingAt(runWithRing, 0, { x: 3, y: 4 })
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Ring reveals tile at (3, 4)')
+      expect(result.message).toContain('3 uses remaining')
+      expect(result.newRun.inventory[0]?.multiUse?.currentUses).toBe(3)
+      expect(result.triggerBehavior).toEqual({
+        type: 'ring',
+        itemIndex: 0,
+        consumeItem: false,
+        parameters: { target: { x: 3, y: 4 } }
+      })
+    })
+
+    it('should remove ring when depleted', () => {
+      const ring = {
+        id: 'ring-of-true-seeing',
+        name: 'Ring of True Seeing',
+        description: 'Reveals contents',
+        multiUse: { maxUses: 6, currentUses: 1 }
+      } as ItemData
+
+      const runWithRing = {
+        ...mockRun,
+        inventory: [ring, null, null]
+      }
+
+      const result = manager.useRingAt(runWithRing, 0, { x: 1, y: 2 })
+
+      expect(result.success).toBe(true)
+      expect(result.newRun.inventory[0]).toBe(null)
+      expect(result.triggerBehavior?.consumeItem).toBe(true)
+    })
+
+    it('should fail with invalid ring item', () => {
+      const result = manager.useRingAt(mockRun, 1, { x: 1, y: 1 }) // Clue, not ring
+
+      expect(result.success).toBe(false)
+      expect(result.message).toBe('Invalid ring item')
+    })
   })
 })
