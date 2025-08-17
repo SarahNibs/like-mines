@@ -244,7 +244,60 @@ describe('InventoryManager', () => {
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
     })
 
-    it('should return false for items requiring special store handling', () => {
+    it('should return behavior trigger for transmute item', () => {
+      const transmuteItem = { id: 'transmute', name: 'Transmute', description: 'Special item' } as ItemData
+      const runWithTransmute = {
+        ...mockRun,
+        inventory: [transmuteItem, null, null]
+      }
+
+      const result = manager.useInventoryItem(
+        runWithTransmute,
+        0,
+        mockApplyItemEffect,
+        mockRemoveFromInventory,
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Transmute mode activated')
+      expect(result.triggerBehavior).toEqual({
+        type: 'transmute',
+        itemIndex: 0,
+        consumeItem: false
+      })
+      expect(mockRemoveFromInventory).not.toHaveBeenCalled()
+    })
+
+    it('should return behavior trigger for detector item', () => {
+      const detectorItem = { id: 'detector', name: 'Detector', description: 'Special item' } as ItemData
+      const runWithDetector = {
+        ...mockRun,
+        inventory: [detectorItem, null, null]
+      }
+
+      const result = manager.useInventoryItem(
+        runWithDetector,
+        0,
+        mockApplyItemEffect,
+        mockRemoveFromInventory,
+        mockGenerateClue,
+        mockUseCrystalBall,
+        mockUseWhistle
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Detector mode activated')
+      expect(result.triggerBehavior).toEqual({
+        type: 'detector',
+        itemIndex: 0,
+        consumeItem: false
+      })
+    })
+
+    it('should return behavior trigger for staff item', () => {
       const staffItem = { id: 'staff-of-fireballs', name: 'Staff', description: 'Special item' } as ItemData
       const runWithStaff = {
         ...mockRun,
@@ -261,8 +314,13 @@ describe('InventoryManager', () => {
         mockUseWhistle
       )
 
-      expect(result.success).toBe(false)
-      expect(result.message).toContain('requires special handling')
+      expect(result.success).toBe(true)
+      expect(result.message).toContain('Staff of Fireballs ready to use')
+      expect(result.triggerBehavior).toEqual({
+        type: 'staff',
+        itemIndex: 0,
+        consumeItem: false
+      })
       expect(mockRemoveFromInventory).not.toHaveBeenCalled()
     })
   })
@@ -451,6 +509,47 @@ describe('InventoryManager', () => {
       
       const info = manager.getItemUsageInfo(unknownItem)
       expect(info).toBe('Use this item')
+    })
+
+    it('should return info for behavior-triggering items', () => {
+      const transmuteItem = { id: 'transmute', name: 'Transmute' } as ItemData
+      const detectorItem = { id: 'detector', name: 'Detector' } as ItemData
+      
+      expect(manager.getItemUsageInfo(transmuteItem)).toContain('Turn any unrevealed tile')
+      expect(manager.getItemUsageInfo(detectorItem)).toContain('see how many adjacent tiles')
+    })
+  })
+
+  describe('triggerBehavior', () => {
+    it('should trigger transmute behavior from external source', () => {
+      const result = manager.triggerBehavior('transmute', 'wizard spell')
+      
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('transmute activated by wizard spell')
+      expect(result.triggerBehavior).toEqual({
+        type: 'transmute',
+        itemIndex: -1,
+        consumeItem: false
+      })
+    })
+
+    it('should trigger detector behavior from external source', () => {
+      const result = manager.triggerBehavior('detector', 'upgrade bonus')
+      
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('detector activated by upgrade bonus')
+      expect(result.triggerBehavior).toEqual({
+        type: 'detector',
+        itemIndex: -1,
+        consumeItem: false
+      })
+    })
+
+    it('should use default source when none provided', () => {
+      const result = manager.triggerBehavior('key')
+      
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('key activated by unknown')
     })
   })
 })

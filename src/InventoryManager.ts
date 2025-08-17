@@ -11,6 +11,11 @@ export interface InventoryResult {
   message?: string
   shouldRevealTile?: boolean
   tileToReveal?: { x: number, y: number }
+  triggerBehavior?: {
+    type: 'transmute' | 'detector' | 'key' | 'staff' | 'ring'
+    itemIndex: number
+    consumeItem: boolean
+  }
 }
 
 export class InventoryManager {
@@ -146,16 +151,69 @@ export class InventoryManager {
         }
       }
       
-      // Items that need special handling by the store (return false to indicate store should handle)
-      case 'transmute':
-      case 'detector':
-      case 'key':
-      case 'staff-of-fireballs':
+      // Items that trigger special behaviors
+      case 'transmute': {
+        return {
+          newRun: currentRun,
+          success: true,
+          message: 'Transmute mode activated',
+          triggerBehavior: {
+            type: 'transmute',
+            itemIndex,
+            consumeItem: false // Don't consume until transmute is actually used
+          }
+        }
+      }
+      
+      case 'detector': {
+        return {
+          newRun: currentRun,
+          success: true,
+          message: 'Detector mode activated',
+          triggerBehavior: {
+            type: 'detector',
+            itemIndex,
+            consumeItem: false // Don't consume until detector is actually used
+          }
+        }
+      }
+      
+      case 'key': {
+        return {
+          newRun: currentRun,
+          success: true,
+          message: 'Key mode activated',
+          triggerBehavior: {
+            type: 'key',
+            itemIndex,
+            consumeItem: false // Don't consume until key is actually used
+          }
+        }
+      }
+      
+      case 'staff-of-fireballs': {
+        return {
+          newRun: currentRun,
+          success: true,
+          message: 'Staff of Fireballs ready to use',
+          triggerBehavior: {
+            type: 'staff',
+            itemIndex,
+            consumeItem: false // Multi-use item, handle consumption in behavior
+          }
+        }
+      }
+      
       case 'ring-of-true-seeing': {
         return {
           newRun: currentRun,
-          success: false,
-          message: 'Item requires special handling by store'
+          success: true,
+          message: 'Ring of True Seeing ready to use',
+          triggerBehavior: {
+            type: 'ring',
+            itemIndex,
+            consumeItem: false // Multi-use item, handle consumption in behavior
+          }
         }
       }
       
@@ -321,6 +379,28 @@ export class InventoryManager {
   }
 
   /**
+   * Trigger a behavior without using an inventory item (for spells, upgrades, etc.)
+   * @param behaviorType Type of behavior to trigger
+   * @param source Description of what triggered this behavior
+   * @returns Behavior result
+   */
+  triggerBehavior(
+    behaviorType: 'transmute' | 'detector' | 'key' | 'staff' | 'ring',
+    source: string = 'unknown'
+  ): InventoryResult {
+    return {
+      newRun: {} as RunState, // Will be ignored when triggerBehavior is present
+      success: true,
+      message: `${behaviorType} activated by ${source}`,
+      triggerBehavior: {
+        type: behaviorType,
+        itemIndex: -1, // -1 indicates not from inventory
+        consumeItem: false
+      }
+    }
+  }
+
+  /**
    * Get information about an item's usage
    * @param item Item to get info for
    * @returns Usage information
@@ -331,6 +411,12 @@ export class InventoryManager {
         return 'Reveals a random unrevealed player tile'
       case 'clue':
         return 'Generates an additional clue about the board'
+      case 'transmute':
+        return 'Turn any unrevealed tile into your own tile'
+      case 'detector':
+        return 'Click any unrevealed tile to see how many adjacent tiles belong to each player'
+      case 'key':
+        return 'Unlocks any locked tile, removing both the lock and the corresponding key'
       case 'staff-of-fireballs':
         return item.multiUse 
           ? `Deals 6 damage to any monster (${item.multiUse.currentUses} uses remaining)`

@@ -381,33 +381,55 @@ class GameStore {
     )
     
     if (result.success) {
-      // InventoryManager handled the item successfully
-      this.setState({ run: result.newRun })
+      // Update run state if it was modified
+      if (Object.keys(result.newRun).length > 0) {
+        this.setState({ run: result.newRun })
+      }
+      
+      // Handle behavior triggers
+      if (result.triggerBehavior) {
+        this.handleBehaviorTrigger(result.triggerBehavior)
+      }
       return
     }
     
-    // Handle special items that require store-specific logic
-    if (item.id === 'transmute') {
-      this.startTransmuteMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'detector') {
-      this.startDetectorMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'key') {
-      this.startKeyMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'staff-of-fireballs') {
-      this.startStaffMode(index)
-      return // Don't consume the item yet
-    } else if (item.id === 'ring-of-true-seeing') {
-      this.useRing(index)
-      return // Don't consume the item yet
-    } else {
-      // Fallback for unknown items
-      const message = applyItemEffect(this.state.run, item)
-      console.log(message)
-      removeItemFromInventory(this.state.run, index)
-      this.setState({ run: { ...this.state.run } })
+    // Fallback for items that couldn't be handled by InventoryManager
+    const message = applyItemEffect(this.state.run, item)
+    console.log(message)
+    removeItemFromInventory(this.state.run, index)
+    this.setState({ run: { ...this.state.run } })
+  }
+
+  // Handle behavior triggers from InventoryManager or other sources
+  private handleBehaviorTrigger(trigger: { type: string, itemIndex: number, consumeItem: boolean }): void {
+    switch (trigger.type) {
+      case 'transmute':
+        this.startTransmuteMode(trigger.itemIndex)
+        break
+      case 'detector':
+        this.startDetectorMode(trigger.itemIndex)
+        break
+      case 'key':
+        this.startKeyMode(trigger.itemIndex)
+        break
+      case 'staff':
+        this.startStaffMode(trigger.itemIndex)
+        break
+      case 'ring':
+        this.useRing(trigger.itemIndex)
+        break
+      default:
+        console.warn(`Unknown behavior trigger type: ${trigger.type}`)
+    }
+  }
+
+  // Trigger a behavior from external sources (spells, upgrades, etc.)
+  triggerBehavior(behaviorType: 'transmute' | 'detector' | 'key' | 'staff' | 'ring', source: string = 'unknown'): void {
+    const result = this.inventoryManager.triggerBehavior(behaviorType, source)
+    
+    if (result.triggerBehavior) {
+      console.log(result.message)
+      this.handleBehaviorTrigger(result.triggerBehavior)
     }
   }
 
