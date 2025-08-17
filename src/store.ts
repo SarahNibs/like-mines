@@ -3,6 +3,7 @@ import { createInitialGameState, createCharacterRunState, revealTile, checkBoard
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
 import { TrophyManager } from './TrophyManager'
+import { ShopManager } from './ShopManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -12,12 +13,14 @@ class GameStore {
   private aiTurnTimeout: number | null = null
   private pendingUpgradeChoice: boolean = false
   private trophyManager: TrophyManager
+  private shopManager: ShopManager
 
   constructor() {
     this.state = createInitialGameState()
     this.state.gameStatus = 'character-select' // Start in character selection
     this.ai = new DumbAI()
     this.trophyManager = new TrophyManager()
+    this.shopManager = new ShopManager()
   }
 
   // Get current state
@@ -921,63 +924,13 @@ class GameStore {
 
   // Shop functionality
   openShop(): void {
-    // Generate items and upgrades with costs scaling by level and Traders bonus
-    import('./items').then(({ SHOP_ITEMS }) => {
-      import('./upgrades').then(({ getAvailableUpgrades }) => {
-        // Base costs based on shop number (shops appear on levels 3, 6, 9, 12, 15, 18)
-        const level = this.state.run.currentLevel
-        const shopNumber = Math.floor(level / 3) // 1st shop (level 3) = 1, 2nd shop (level 6) = 2, etc.
-        
-        // Count Traders upgrades for additional items
-        const tradersCount = this.state.run.upgrades.filter(id => id === 'traders').length
-        const baseItemCount = 5
-        const totalItemCount = baseItemCount + tradersCount
-        
-        // Generate item costs: Level 3: 2,3,4,5 / Level 6: 3,4,5,6 / Level 9: 4,5,6,7 etc.
-        const baseItemCost = 1 + shopNumber // Level 3 = shop 1, base cost 2. Level 6 = shop 2, base cost 3.
-        const itemCosts = []
-        for (let i = 0; i < totalItemCount; i++) {
-          const extraCost = i >= baseItemCount ? i - baseItemCount + 1 : 0 // Traders extra items cost +1 more
-          itemCosts.push(baseItemCost + i + extraCost)
-        }
-        
-        // Generate upgrade costs: Level 3: 7 / Level 6: 8 / Level 9: 9 etc.
-        const baseUpgradeCost = 6 + shopNumber // Level 3 = shop 1, upgrade cost 7. Level 6 = shop 2, upgrade cost 8.
-        const totalUpgradeCount = 1 + tradersCount
-        const upgradeCosts = []
-        for (let i = 0; i < totalUpgradeCount; i++) {
-          upgradeCosts.push(baseUpgradeCost + (i > 0 ? i : 0))
-        }
-        
-        const shopItems = []
-        
-        // Add random items
-        for (let i = 0; i < totalItemCount; i++) {
-          const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
-          shopItems.push({
-            item: randomItem,
-            cost: itemCosts[i],
-            isUpgrade: false
-          })
-        }
-        
-        // Add random upgrades
-        const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
-        for (let i = 0; i < totalUpgradeCount && i < availableUpgrades.length; i++) {
-          const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
-          shopItems.push({
-            item: randomUpgrade,
-            cost: upgradeCosts[i],
-            isUpgrade: true
-          })
-        }
-        
-        console.log('Shop opened with items:', shopItems)
+    this.shopManager.openShop(this.state.run).then(result => {
+      if (result.shopOpen) {
         this.setState({
-          shopOpen: true,
-          shopItems
+          shopOpen: result.shopOpen,
+          shopItems: result.shopItems
         })
-      })
+      }
     })
   }
 
@@ -987,73 +940,42 @@ class GameStore {
       return false
     }
     
-    const shopItem = this.state.shopItems[index]
-    const run = this.state.run
+    const result = this.shopManager.buyShopItem(
+      this.state.run,
+      this.state.shopItems,
+      index,
+      // applyUpgradeCallback - returns updated run
+      (upgradeId: string, run: any) => {
+        this.applyUpgrade(upgradeId)
+        return this.state.run // Return the updated run from state
+      },
+      // applyItemEffectCallback 
+      (run: any, item: any) => applyItemEffect(run, item),
+      // addItemToInventoryCallback
+      (run: any, item: any) => addItemToInventory(run, item)
+    )
     
-    // Check if player has enough gold
-    if (run.gold < shopItem.cost) {
-      console.log(`Not enough gold! Need ${shopItem.cost}, have ${run.gold}`)
-      return false
+    if (result.success && result.newRun) {
+      this.setState({
+        run: result.newRun,
+        shopItems: result.shopItems
+      })
+    } else if (result.success === false) {
+      // Handle failure case (not enough gold, etc.)
+      console.log(result.message)
     }
     
-    // Deduct gold
-    run.gold -= shopItem.cost
-    
-    // Handle upgrades vs items
-    if (shopItem.isUpgrade) {
-      // Apply upgrade immediately - this will handle its own setState
-      this.applyUpgrade(shopItem.item.id)
-      console.log(`Bought and applied ${shopItem.item.name} upgrade for ${shopItem.cost} gold`)
-      
-      // Remove the bought item from shop and update state with current run from state (which was updated by applyUpgrade)
-      const newShopItems = [...this.state.shopItems]
-      newShopItems.splice(index, 1)
-      
-      this.setState({ 
-        run: { ...this.state.run }, // Use the updated run from state
-        shopItems: newShopItems
-      })
-    } else if (shopItem.item.immediate) {
-      // Use immediate item right away
-      const message = applyItemEffect(run, shopItem.item)
-      console.log(`Bought and used ${shopItem.item.name} for ${shopItem.cost} gold: ${message}`)
-      
-      // Remove the bought item from shop
-      const newShopItems = [...this.state.shopItems]
-      newShopItems.splice(index, 1)
-      
-      this.setState({ 
-        run: { ...run },
-        shopItems: newShopItems
-      })
-    } else {
-      // Try to add item to inventory
-      const success = addItemToInventory(run, shopItem.item)
-      if (!success) {
-        console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`)
-      } else {
-        console.log(`Bought ${shopItem.item.name} for ${shopItem.cost} gold`)
-      }
-      
-      // Remove the bought item from shop
-      const newShopItems = [...this.state.shopItems]
-      newShopItems.splice(index, 1)
-      
-      this.setState({ 
-        run: { ...run },
-        shopItems: newShopItems
-      })
-    }
-    return true
+    return result.success || false
   }
 
   // Close shop
   closeShop(): void {
     const wasBoardWon = this.state.boardStatus === 'won'
     
+    const result = this.shopManager.closeShop()
     this.setState({
-      shopOpen: false,
-      shopItems: []
+      shopOpen: result.shopOpen,
+      shopItems: result.shopItems
     })
     
     // If board was won while shop was open, trigger progression now
