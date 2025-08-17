@@ -5,6 +5,7 @@ import { generateClue } from './clues'
 import { TrophyManager } from './TrophyManager'
 import { ShopManager } from './ShopManager'
 import { InventoryManager } from './InventoryManager'
+import { UpgradeManager } from './UpgradeManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -16,6 +17,7 @@ class GameStore {
   private trophyManager: TrophyManager
   private shopManager: ShopManager
   private inventoryManager: InventoryManager
+  private upgradeManager: UpgradeManager
 
   constructor() {
     this.state = createInitialGameState()
@@ -24,6 +26,7 @@ class GameStore {
     this.trophyManager = new TrophyManager()
     this.shopManager = new ShopManager()
     this.inventoryManager = new InventoryManager()
+    this.upgradeManager = new UpgradeManager()
   }
 
   // Get current state
@@ -1072,92 +1075,31 @@ class GameStore {
 
   // Apply upgrade effects
   applyUpgrade(upgradeId: string): void {
-    const run = { ...this.state.run }
+    const result = this.upgradeManager.applyUpgrade(this.state.run, upgradeId)
     
-    // For repeatable upgrades, add multiple instances; for non-repeatable, only add once
-    const isRepeatable = ['attack', 'defense', 'healthy', 'income', 'traders', 'bag', 'left-hand', 'right-hand', 'resting'].includes(upgradeId)
-    
-    if (isRepeatable || !run.upgrades.includes(upgradeId)) {
-      run.upgrades = [...run.upgrades, upgradeId]
+    if (result.success) {
+      this.setState({ run: result.newRun })
+      console.log(result.message)
     } else {
-      // Non-repeatable upgrade already owned, don't add again
-      console.log(`Already have ${upgradeId} upgrade (non-repeatable)`)
-      return
+      console.log(result.message)
     }
-    
-    // Apply upgrade effects
-    switch (upgradeId) {
-      case 'attack':
-        run.attack += 2
-        break
-      case 'defense':
-        run.defense += 1
-        break
-      case 'healthy':
-        run.maxHp += 25
-        break
-      case 'income':
-        run.loot += 1
-        break
-      case 'bag':
-        run.maxInventory += 1
-        run.inventory.push(null) // Add one more inventory slot
-        break
-      // QUICK, RICH, WISDOM, TRADERS, LEFT_HAND, RIGHT_HAND are passive and don't need immediate effects
-      case 'quick':
-      case 'rich':
-      case 'wisdom':
-      case 'traders':
-      case 'left-hand':
-      case 'right-hand':
-        // These are handled at clue generation / board generation time
-        break
-      case 'resting':
-        // This is handled at tile reveal time
-        break
-    }
-    
-    this.setState({ run })
   }
 
   // Apply RICH upgrade effect: place a single treasure chest on an adjacent tile
   private async applyRichUpgrade(x: number, y: number): Promise<void> {
-    const board = this.state.board
+    const result = await this.upgradeManager.applyRichUpgrade(this.state.board, x, y)
     
-    // Import the CHEST item
-    const { CHEST } = await import('./items')
-    
-    // Collect all valid adjacent positions
-    const adjacentTiles = []
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue // Skip center tile
-        
-        const adjX = x + dx
-        const adjY = y + dy
-        const adjTile = getTileAt(board, adjX, adjY)
-        
-        // Only consider unrevealed empty tiles
-        if (adjTile && !adjTile.revealed && adjTile.content === TileContent.Empty) {
-          adjacentTiles.push({ tile: adjTile, x: adjX, y: adjY })
-        }
+    if (result.success) {
+      console.log(result.message)
+      
+      // Update board if chest was placed
+      if (result.placementEffect && result.placementEffect.newBoard) {
+        this.setState({
+          board: result.placementEffect.newBoard
+        })
       }
-    }
-    
-    // Place chest on exactly one random adjacent tile (if any exist)
-    if (adjacentTiles.length > 0) {
-      const randomIndex = Math.floor(Math.random() * adjacentTiles.length)
-      const chosenTile = adjacentTiles[randomIndex]
-      
-      chosenTile.tile.content = TileContent.Item
-      chosenTile.tile.itemData = CHEST
-      
-      console.log(`Rich upgrade: placed treasure chest at (${chosenTile.x}, ${chosenTile.y})`)
-      
-      // Force a state update to make the chest visible immediately
-      this.setState({
-        board: { ...board }
-      })
+    } else {
+      console.log(result.message)
     }
   }
 
