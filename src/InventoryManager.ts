@@ -1,0 +1,265 @@
+/**
+ * InventoryManager - Handles inventory operations including item usage and discarding
+ * Extracted from store.ts for better organization
+ */
+
+import { RunState, ItemData } from './types'
+
+export interface InventoryResult {
+  newRun: RunState
+  success: boolean
+  message?: string
+  shouldRevealTile?: boolean
+  tileToReveal?: { x: number, y: number }
+}
+
+export class InventoryManager {
+  
+  /**
+   * Use an item from inventory
+   * @param currentRun Current run state
+   * @param itemIndex Index of item to use
+   * @param applyItemEffectCallback Callback to apply item effects
+   * @param removeItemFromInventoryCallback Callback to remove items from inventory
+   * @param generateClueCallback Callback to generate new clues
+   * @returns Result of item usage
+   */
+  useInventoryItem(
+    currentRun: RunState,
+    itemIndex: number,
+    applyItemEffectCallback: (run: RunState, item: ItemData) => string,
+    removeItemFromInventoryCallback: (run: RunState, index: number) => void,
+    generateClueCallback?: () => void
+  ): InventoryResult {
+    const item = currentRun.inventory[itemIndex]
+    
+    if (!item) {
+      return {
+        newRun: currentRun,
+        success: false,
+        message: 'No item in that slot'
+      }
+    }
+
+    const run = { ...currentRun }
+    
+    // Handle different item types
+    switch (item.id) {
+      case 'crystal-ball': {
+        // Crystal Ball reveals a random unrevealed player tile
+        // Remove the item BEFORE revealing to free up inventory space
+        removeItemFromInventoryCallback(run, itemIndex)
+        
+        return {
+          newRun: run,
+          success: true,
+          shouldRevealTile: true,
+          message: 'Crystal Ball used - revealing a random tile'
+        }
+      }
+      
+      case 'clue': {
+        // Generate a new clue
+        removeItemFromInventoryCallback(run, itemIndex)
+        if (generateClueCallback) {
+          generateClueCallback()
+        }
+        
+        return {
+          newRun: run,
+          success: true,
+          message: 'Generated a new clue'
+        }
+      }
+      
+      default: {
+        // Handle other items through the generic effect system
+        const message = applyItemEffectCallback(run, item)
+        removeItemFromInventoryCallback(run, itemIndex)
+        
+        return {
+          newRun: run,
+          success: true,
+          message
+        }
+      }
+    }
+  }
+
+  /**
+   * Discard an item from inventory
+   * @param currentRun Current run state
+   * @param itemIndex Index of item to discard
+   * @param removeItemFromInventoryCallback Callback to remove items from inventory
+   * @returns Result of discard operation
+   */
+  discardInventoryItem(
+    currentRun: RunState,
+    itemIndex: number,
+    removeItemFromInventoryCallback: (run: RunState, index: number) => void
+  ): InventoryResult {
+    const item = currentRun.inventory[itemIndex]
+    
+    if (!item) {
+      return {
+        newRun: currentRun,
+        success: false,
+        message: 'No item to discard in that slot'
+      }
+    }
+
+    const run = { ...currentRun }
+    removeItemFromInventoryCallback(run, itemIndex)
+    
+    console.log(`Discarded ${item.name}`)
+    
+    return {
+      newRun: run,
+      success: true,
+      message: `Discarded ${item.name}`
+    }
+  }
+
+  /**
+   * Use a multi-use item like Staff of Fireballs
+   * @param currentRun Current run state
+   * @param itemIndex Index of multi-use item
+   * @param damage Damage to deal (for staff)
+   * @returns Updated run state and usage result
+   */
+  useMultiUseItem(
+    currentRun: RunState,
+    itemIndex: number,
+    damage?: number
+  ): InventoryResult {
+    const item = currentRun.inventory[itemIndex]
+    
+    if (!item || !item.multiUse) {
+      return {
+        newRun: currentRun,
+        success: false,
+        message: 'Item is not a multi-use item'
+      }
+    }
+
+    const run = { ...currentRun }
+    
+    // Handle different multi-use items
+    switch (item.id) {
+      case 'staff-of-fireballs': {
+        if (damage === undefined) {
+          return {
+            newRun: currentRun,
+            success: false,
+            message: 'Staff requires damage amount'
+          }
+        }
+        
+        // Use one charge
+        const updatedItem = {
+          ...item,
+          multiUse: {
+            ...item.multiUse,
+            currentUses: item.multiUse.currentUses - 1
+          }
+        }
+        
+        run.inventory[itemIndex] = updatedItem
+        
+        // Remove if depleted
+        if (updatedItem.multiUse.currentUses <= 0) {
+          run.inventory[itemIndex] = null
+          console.log('Staff of Fireballs is depleted and removed from inventory')
+        }
+        
+        return {
+          newRun: run,
+          success: true,
+          message: `Staff deals ${damage} damage! ${updatedItem.multiUse.currentUses} uses remaining.`
+        }
+      }
+      
+      case 'ring-of-true-seeing': {
+        // Use one charge
+        const updatedItem = {
+          ...item,
+          multiUse: {
+            ...item.multiUse,
+            currentUses: item.multiUse.currentUses - 1
+          }
+        }
+        
+        run.inventory[itemIndex] = updatedItem
+        
+        // Remove if depleted
+        if (updatedItem.multiUse.currentUses <= 0) {
+          run.inventory[itemIndex] = null
+          console.log('Ring of True Seeing is depleted and removed from inventory')
+        }
+        
+        return {
+          newRun: run,
+          success: true,
+          message: `Ring reveals tile contents! ${updatedItem.multiUse.currentUses} uses remaining.`
+        }
+      }
+      
+      default: {
+        return {
+          newRun: currentRun,
+          success: false,
+          message: `Unknown multi-use item: ${item.id}`
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if an item is usable in the current context
+   * @param item Item to check
+   * @param context Current game context
+   * @returns Whether item can be used
+   */
+  canUseItem(item: ItemData, context: 'normal' | 'combat' | 'shop'): boolean {
+    // Items that can only be used in specific contexts
+    switch (item.id) {
+      case 'staff-of-fireballs':
+        return context === 'combat'
+      case 'ward':
+      case 'blaze':
+        return context === 'combat' || context === 'normal'
+      default:
+        return true
+    }
+  }
+
+  /**
+   * Get information about an item's usage
+   * @param item Item to get info for
+   * @returns Usage information
+   */
+  getItemUsageInfo(item: ItemData): string {
+    switch (item.id) {
+      case 'crystal-ball':
+        return 'Reveals a random unrevealed player tile'
+      case 'clue':
+        return 'Generates an additional clue about the board'
+      case 'staff-of-fireballs':
+        return item.multiUse 
+          ? `Deals 6 damage to any monster (${item.multiUse.currentUses} uses remaining)`
+          : 'Deals 6 damage to any monster'
+      case 'ring-of-true-seeing':
+        return item.multiUse
+          ? `Reveals tile contents without triggering effects (${item.multiUse.currentUses} uses remaining)`
+          : 'Reveals tile contents without triggering effects'
+      case 'ward':
+        return 'Grants +4 defense for your next fight only'
+      case 'blaze':
+        return 'Grants +5 attack for your next fight only'
+      case 'protection':
+        return 'The next tile you reveal never ends your turn'
+      default:
+        return item.description || 'Use this item'
+    }
+  }
+}

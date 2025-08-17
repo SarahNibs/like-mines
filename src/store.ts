@@ -4,6 +4,7 @@ import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
 import { TrophyManager } from './TrophyManager'
 import { ShopManager } from './ShopManager'
+import { InventoryManager } from './InventoryManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -14,6 +15,7 @@ class GameStore {
   private pendingUpgradeChoice: boolean = false
   private trophyManager: TrophyManager
   private shopManager: ShopManager
+  private inventoryManager: InventoryManager
 
   constructor() {
     this.state = createInitialGameState()
@@ -21,6 +23,7 @@ class GameStore {
     this.ai = new DumbAI()
     this.trophyManager = new TrophyManager()
     this.shopManager = new ShopManager()
+    this.inventoryManager = new InventoryManager()
   }
 
   // Get current state
@@ -1159,12 +1162,15 @@ class GameStore {
 
   // Discard item from inventory (legacy method for direct discard)
   discardInventoryItem(index: number): void {
-    const item = this.state.run.inventory[index]
-    if (!item) return
+    const result = this.inventoryManager.discardInventoryItem(
+      this.state.run,
+      index,
+      (run, itemIndex) => removeItemFromInventory(run, itemIndex)
+    )
     
-    console.log(`Discarded ${item.name}`)
-    removeItemFromInventory(this.state.run, index)
-    this.setState({ run: { ...this.state.run } })
+    if (result.success) {
+      this.setState({ run: result.newRun })
+    }
   }
 
 
