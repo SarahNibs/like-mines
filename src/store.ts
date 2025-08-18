@@ -288,8 +288,8 @@ class GameStore {
     )
     
     if (result.success) {
-      // Update run state if it was modified
-      if (Object.keys(result.newRun).length > 0) {
+      // Update run state if it was modified, but skip for Crystal Ball which handles its own state
+      if (Object.keys(result.newRun).length > 0 && item.id !== 'crystal-ball') {
         this.setState({ run: result.newRun })
       }
       
