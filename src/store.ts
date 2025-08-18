@@ -957,8 +957,15 @@ class GameStore {
       index,
       // applyUpgradeCallback - returns updated run
       (upgradeId: string, run: any) => {
-        this.applyUpgrade(upgradeId)
-        return this.state.run // Return the updated run from state
+        // Apply the upgrade to the provided run (which already has gold deducted)
+        const upgradeResult = this.upgradeManager.applyUpgrade(run, upgradeId)
+        if (upgradeResult.success) {
+          console.log(upgradeResult.message)
+          return upgradeResult.newRun
+        } else {
+          console.log(upgradeResult.message)
+          return run // Return original run if upgrade failed
+        }
       },
       // applyItemEffectCallback 
       (run: any, item: any) => applyItemEffect(run, item),
