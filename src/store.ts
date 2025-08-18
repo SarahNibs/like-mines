@@ -73,11 +73,6 @@ class GameStore {
       return false
     }
     
-    // Handle trophy awarding (meta-progression that stays in store)
-    if (result.newBoardStatus === 'won') {
-      this.awardTrophies()
-    }
-    
     // Handle monster death vs trophy stealing (requires TrophyManager access)
     if (result.gameOver && result.newRun.hp <= 0) {
       const tile = getTileAt(this.state.board, x, y)
@@ -107,10 +102,28 @@ class GameStore {
       this.pendingUpgradeChoice = true
     }
     
-    // Update game state
+    // Award trophies and get updated run state BEFORE setting state
+    let finalRunState = result.newRun ? { ...result.newRun } : { ...this.state.run }
+    if (result.newBoardStatus === 'won') {
+      const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
+      const opponentTilesRevealed = this.state.board.opponentTilesRevealed
+      
+      const trophyResult = this.trophyManager.awardTrophies(
+        finalRunState.trophies, 
+        opponentTilesLeft, 
+        opponentTilesRevealed
+      )
+      
+      finalRunState = {
+        ...finalRunState,
+        trophies: trophyResult.newTrophies
+      }
+    }
+    
+    // Update game state with trophies included
     this.setState({
       board: result.newBoard ? { ...result.newBoard } : { ...this.state.board },
-      run: result.newRun ? { ...result.newRun } : { ...this.state.run },
+      run: finalRunState,
       boardStatus: result.newBoardStatus || this.state.boardStatus,
       currentTurn: result.newTurn || this.state.currentTurn,
       gameStatus: result.gameOver ? 'player-died' : this.state.gameStatus
@@ -493,11 +506,6 @@ class GameStore {
       return
     }
     
-    // Handle trophy awarding (meta-progression that stays in store)
-    if (result.newBoardStatus === 'won') {
-      this.awardTrophies()
-    }
-    
     // Handle monster death vs trophy stealing (requires TrophyManager access)
     if (result.gameOver && result.newRun && result.newRun.hp <= 0) {
       const tile = getTileAt(this.state.board, tilePos.x, tilePos.y)
@@ -527,10 +535,28 @@ class GameStore {
       this.pendingUpgradeChoice = true
     }
     
-    // Update game state
+    // Award trophies and get updated run state BEFORE setting state
+    let finalRunState = result.newRun ? { ...result.newRun } : { ...this.state.run }
+    if (result.newBoardStatus === 'won') {
+      const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
+      const opponentTilesRevealed = this.state.board.opponentTilesRevealed
+      
+      const trophyResult = this.trophyManager.awardTrophies(
+        finalRunState.trophies, 
+        opponentTilesLeft, 
+        opponentTilesRevealed
+      )
+      
+      finalRunState = {
+        ...finalRunState,
+        trophies: trophyResult.newTrophies
+      }
+    }
+    
+    // Update game state with trophies included
     this.setState({
       board: result.newBoard ? { ...result.newBoard } : { ...this.state.board },
-      run: result.newRun ? { ...result.newRun } : { ...this.state.run },
+      run: finalRunState,
       boardStatus: result.newBoardStatus || this.state.boardStatus,
       gameStatus: result.gameOver ? 'player-died' : this.state.gameStatus
     })
@@ -1245,14 +1271,33 @@ class GameStore {
     }
     
     const newBoardStatus = checkBoardStatus(board)
+    
+    // Award trophies if board is won
+    let updatedRun = { ...this.state.run }
+    if (newBoardStatus === 'won') {
+      const opponentTilesLeft = board.opponentTilesTotal - board.opponentTilesRevealed
+      const opponentTilesRevealed = board.opponentTilesRevealed
+      
+      const trophyResult = this.trophyManager.awardTrophies(
+        updatedRun.trophies, 
+        opponentTilesLeft, 
+        opponentTilesRevealed
+      )
+      
+      updatedRun = {
+        ...updatedRun,
+        trophies: trophyResult.newTrophies
+      }
+    }
+    
     this.setState({
       board: { ...board },
-      boardStatus: newBoardStatus
+      boardStatus: newBoardStatus,
+      run: updatedRun
     })
     
     // Handle board completion
     if (newBoardStatus === 'won') {
-      this.awardTrophies()
       this.handleBoardWon()
     } else if (newBoardStatus === 'lost') {
       this.handleBoardLost()
