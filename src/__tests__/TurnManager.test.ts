@@ -370,4 +370,113 @@ describe('TurnManager', () => {
       expect(result.newRun.upgrades).toContain('blaze-temp')
     })
   })
+
+  describe('processAutomatedTileReveal', () => {
+    it('should reveal tile without turn validation', () => {
+      mockGameState.currentTurn = 'opponent' // This would block processPlayerTileReveal
+      
+      const result = manager.processAutomatedTileReveal(1, 1, mockGameState)
+      
+      expect(result.success).toBe(true)
+      expect(result.newTurn).toBe('opponent') // Should maintain current turn
+    })
+
+    it('should reject already revealed tiles', () => {
+      mockBoard.tiles[0][0].revealed = true
+      
+      const result = manager.processAutomatedTileReveal(0, 0, mockGameState)
+      
+      expect(result.success).toBe(false)
+      expect(result.message).toContain('already revealed')
+    })
+
+    it('should process player tile content normally', () => {
+      mockBoard.tiles[1][1].content = TileContent.PermanentUpgrade
+      mockBoard.tiles[1][1].upgradeData = {
+        id: 'attack',
+        name: 'Attack',
+        description: 'Increases attack',
+        icon: '⚔️',
+        repeatable: true
+      }
+      
+      const result = manager.processAutomatedTileReveal(1, 1, mockGameState)
+      
+      expect(result.success).toBe(true)
+      expect(result.upgradeChoiceTriggered).toBe(true)
+    })
+
+    it('should award loot for opponent tiles', () => {
+      const initialGold = mockRun.gold
+      
+      const result = manager.processAutomatedTileReveal(0, 0, mockGameState) // Opponent tile
+      
+      expect(result.success).toBe(true)
+      expect(result.newRun.gold).toBe(initialGold + mockRun.loot)
+    })
+
+    it('should not award loot for player tiles', () => {
+      const initialGold = mockRun.gold
+      
+      const result = manager.processAutomatedTileReveal(1, 1, mockGameState) // Player tile
+      
+      expect(result.success).toBe(true)
+      expect(result.newRun.gold).toBe(initialGold) // No loot bonus for player tiles
+    })
+
+    it('should handle monster encounters', () => {
+      mockBoard.tiles[0][0].content = TileContent.Monster
+      mockBoard.tiles[0][0].monsterData = {
+        id: 'rat',
+        name: 'Rat',
+        icon: '🐀',
+        attack: 1,
+        defense: 0,
+        hp: 6
+      }
+      
+      const result = manager.processAutomatedTileReveal(0, 0, mockGameState)
+      
+      expect(result.success).toBe(true)
+      // Monster combat should be processed normally
+    })
+
+    it('should apply resting upgrade on neutral tiles', () => {
+      mockBoard.tiles[0][0].owner = 'neutral'
+      mockRun.upgrades = ['resting']
+      const initialHp = mockRun.hp
+      
+      const result = manager.processAutomatedTileReveal(0, 0, mockGameState)
+      
+      expect(result.success).toBe(true)
+      expect(result.newRun.hp).toBe(Math.min(mockRun.maxHp, initialHp + 3)) // 1 * 3 healing
+    })
+
+    it('should trigger rich upgrade on monster defeat', () => {
+      mockBoard.tiles[0][0].owner = 'neutral' // Neutral to avoid loot bonus
+      mockBoard.tiles[0][0].content = TileContent.Monster
+      mockBoard.tiles[0][0].monsterData = {
+        id: 'rat',
+        name: 'Rat', 
+        icon: '🐀',
+        attack: 1,
+        defense: 0,
+        hp: 6
+      }
+      mockRun.upgrades = ['rich']
+      
+      const result = manager.processAutomatedTileReveal(0, 0, mockGameState)
+      
+      expect(result.success).toBe(true)
+      expect(result.richUpgradeTriggered).toEqual({ x: 0, y: 0 })
+    })
+
+    it('should use specified revealedBy parameter', () => {
+      const result = manager.processAutomatedTileReveal(1, 1, mockGameState, 'opponent')
+      
+      expect(result.success).toBe(true)
+      // Tile should be marked as revealed by opponent
+      expect(mockBoard.tiles[1][1].revealedBy).toBe('opponent')
+    })
+  })
 })

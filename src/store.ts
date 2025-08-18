@@ -257,91 +257,6 @@ class GameStore {
     return true
   }
 
-  // Handle tile content when revealed
-  private handleTileContent(tile: any): void {
-    const run = this.state.run
-    
-    if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
-      // Show upgrade choice widget instead of applying immediately
-      this.triggerUpgradeChoice()
-      console.log(`Found upgrade! Choose your enhancement.`)
-      // Set a flag to prevent AI turn until upgrade is chosen
-      this.pendingUpgradeChoice = true
-    } else if (tile.content === TileContent.Item && tile.itemData) {
-      const item = tile.itemData
-      
-      if (item.immediate) {
-        // Apply immediate effect
-        const message = applyItemEffect(run, item)
-        console.log(message) // For now, just log - we'll add a message system later
-        
-        // Check for game over after immediate effects (like bear trap)
-        if (run.hp <= 0) {
-          console.log('Player died! Game over.')
-          this.setState({ gameStatus: 'player-died' })
-          return
-        }
-        
-        // Handle shop opening
-        if (item.id === 'shop') {
-          this.openShop()
-        }
-      } else {
-        // Try to add to inventory
-        const success = addItemToInventory(run, item)
-        if (!success) {
-          // Inventory full - check if this is an item that can be auto-applied
-          if (item.id === 'ward') {
-            // Apply ward effect immediately
-            run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 4
-            if (!run.upgrades.includes('ward-temp')) {
-              run.upgrades.push('ward-temp') // Add to upgrades list for display
-            }
-            console.log(`Inventory full! Ward auto-applied: +4 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
-          } else if (item.id === 'blaze') {
-            // Apply blaze effect immediately
-            run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
-            if (!run.upgrades.includes('blaze-temp')) {
-              run.upgrades.push('blaze-temp') // Add to upgrades list for display
-            }
-            console.log(`Inventory full! Blaze auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`)
-          } else {
-            console.log(`Inventory full! ${item.name} was lost.`)
-          }
-        }
-      }
-    } else if (tile.content === TileContent.Monster && tile.monsterData) {
-      const monster = tile.monsterData
-      const damage = fightMonster(monster, run)
-      const newHp = run.hp - damage
-      
-      // Check if player would die from this damage
-      if (newHp <= 0) {
-        // Try to steal a gold trophy to prevent death
-        if (this.stealGoldTrophy(monster.name)) {
-          run.hp = 1 // Survive with 1 HP instead of taking full damage
-          console.log(`${monster.name} stole a gold trophy! You survive with 1 HP.`)
-          // No loot or Rich upgrade when saved by trophy theft
-        } else {
-          run.hp = newHp // Apply the lethal damage
-          console.log('Player died! Game over.')
-          this.setState({ gameStatus: 'player-died' })
-          return
-        }
-      } else {
-        // Apply damage normally and award loot
-        run.hp = newHp
-        run.gold += run.loot
-        
-        // RICH upgrade: add gold items to adjacent tiles when defeating monsters
-        if (run.upgrades.includes('rich')) {
-          this.applyRichUpgrade(tile.x, tile.y).catch(console.error)
-        }
-        
-        console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${run.loot} gold. HP: ${run.hp}/${run.maxHp}`)
-      }
-    }
-  }
 
   // Use item from inventory
   useInventoryItem(index: number): void {
@@ -570,29 +485,61 @@ class GameStore {
     
     console.log(`Crystal Ball: Revealing player tile at (${tilePos.x}, ${tilePos.y})`)
     
-    // Reveal the tile and handle its content
-    const tile = getTileAt(board, tilePos.x, tilePos.y)
-    if (tile) {
-      const success = revealTile(board, tilePos.x, tilePos.y, 'player')
-      if (success) {
-        // Handle tile content 
-        this.handleTileContent(tile)
-        
-        // Update board status
-        const newBoardStatus = checkBoardStatus(board)
-        this.setState({
-          board: { ...board },
-          boardStatus: newBoardStatus
-        })
-        
-        // Handle board completion if needed
-        if (newBoardStatus === 'won') {
-          this.awardTrophies()
-          this.handleBoardWon()
-        } else if (newBoardStatus === 'lost') {
-          this.handleBoardLost()
+    // Use TurnManager to process the tile reveal consistently
+    const result = this.turnManager.processAutomatedTileReveal(tilePos.x, tilePos.y, this.state, 'player')
+    
+    if (!result.success) {
+      console.log(`Crystal Ball failed: ${result.message}`)
+      return
+    }
+    
+    // Handle trophy awarding (meta-progression that stays in store)
+    if (result.newBoardStatus === 'won') {
+      this.awardTrophies()
+    }
+    
+    // Handle monster death vs trophy stealing (requires TrophyManager access)
+    if (result.gameOver && result.newRun && result.newRun.hp <= 0) {
+      const tile = getTileAt(this.state.board, tilePos.x, tilePos.y)
+      if (tile && tile.content === TileContent.Monster && tile.monsterData) {
+        // Try to steal a gold trophy to prevent death
+        if (this.stealGoldTrophy(tile.monsterData.name)) {
+          result.newRun.hp = 1 // Survive with 1 HP instead of dying
+          result.gameOver = false
+          console.log(`${tile.monsterData.name} stole a gold trophy! You survive with 1 HP.`)
         }
       }
+    }
+    
+    // Handle Rich upgrade trigger (requires UpgradeManager access)
+    if (result.richUpgradeTriggered) {
+      this.applyRichUpgrade(result.richUpgradeTriggered.x, result.richUpgradeTriggered.y).catch(console.error)
+    }
+    
+    // Handle shop opening
+    if (result.shopOpened) {
+      this.openShop()
+    }
+    
+    // Handle upgrade choice trigger
+    if (result.upgradeChoiceTriggered) {
+      this.triggerUpgradeChoice()
+      this.pendingUpgradeChoice = true
+    }
+    
+    // Update game state
+    this.setState({
+      board: result.newBoard ? { ...result.newBoard } : { ...this.state.board },
+      run: result.newRun ? { ...result.newRun } : { ...this.state.run },
+      boardStatus: result.newBoardStatus || this.state.boardStatus,
+      gameStatus: result.gameOver ? 'player-died' : this.state.gameStatus
+    })
+    
+    // Handle board completion
+    if (result.newBoardStatus === 'won') {
+      this.handleBoardWon()
+    } else if (result.newBoardStatus === 'lost') {
+      this.handleBoardLost()
     }
   }
 

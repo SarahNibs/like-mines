@@ -332,6 +332,66 @@ export class TurnManager {
   }
   
   /**
+   * Process an automated tile reveal (like Crystal Ball) that bypasses turn validation
+   * This ensures consistent tile content processing without turn restrictions
+   */
+  processAutomatedTileReveal(x: number, y: number, gameState: GameState, revealedBy: 'player' | 'opponent' = 'player'): TurnResult {
+    const tile = getTileAt(gameState.board, x, y)
+    if (!tile || tile.revealed) {
+      return { success: false, message: 'Invalid tile or already revealed' }
+    }
+    
+    // Perform the actual tile reveal
+    const success = revealTile(gameState.board, x, y, revealedBy)
+    if (!success) {
+      return { success: false, message: 'Failed to reveal tile' }
+    }
+    
+    // Process all the effects in order (same as processPlayerTileReveal but without turn validation)
+    const context: TileRevealContext = { tile, board: gameState.board, run: gameState.run }
+    
+    // 1. Check board status first
+    const newBoardStatus = checkBoardStatus(gameState.board)
+    
+    // 2. Apply immediate rewards (loot, trophies) - only if revealing opponent tiles
+    if (tile.owner === 'opponent') {
+      this.processImmediateRewards(context, newBoardStatus)
+    }
+    
+    // 3. Apply upgrade effects (resting, etc.)
+    this.processUpgradeEffects(context)
+    
+    // 4. Handle tile content
+    const contentResult = this.processTileContent(context)
+    
+    // Check for game over after content processing
+    if (contentResult.gameOver) {
+      return {
+        success: true,
+        newBoard: gameState.board,
+        newRun: gameState.run,
+        newBoardStatus,
+        gameOver: true,
+        upgradeChoiceTriggered: contentResult.upgradeChoiceTriggered,
+        shopOpened: contentResult.shopOpened,
+        richUpgradeTriggered: contentResult.richUpgradeTriggered
+      }
+    }
+    
+    // For automated reveals, we don't change turns or consume protection
+    return {
+      success: true,
+      newBoard: gameState.board,
+      newRun: gameState.run,
+      newBoardStatus,
+      newTurn: gameState.currentTurn, // Keep current turn
+      upgradeChoiceTriggered: contentResult.upgradeChoiceTriggered,
+      shopOpened: contentResult.shopOpened,
+      richUpgradeTriggered: contentResult.richUpgradeTriggered
+    }
+  }
+
+  /**
    * Check if AI turn should be scheduled based on game state
    */
   shouldScheduleAITurn(
