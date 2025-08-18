@@ -6,6 +6,7 @@ import { TrophyManager } from './TrophyManager'
 import { ShopManager } from './ShopManager'
 import { InventoryManager } from './InventoryManager'
 import { UpgradeManager } from './UpgradeManager'
+import { TurnManager } from './TurnManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -18,6 +19,7 @@ class GameStore {
   private shopManager: ShopManager
   private inventoryManager: InventoryManager
   private upgradeManager: UpgradeManager
+  private turnManager: TurnManager
 
   constructor() {
     this.state = createInitialGameState()
@@ -27,6 +29,7 @@ class GameStore {
     this.shopManager = new ShopManager()
     this.inventoryManager = new InventoryManager()
     this.upgradeManager = new UpgradeManager()
+    this.turnManager = new TurnManager()
   }
 
   // Get current state
@@ -60,101 +63,74 @@ class GameStore {
 
   // Actions
   revealTileAt(x: number, y: number, bypassRewind: boolean = false): boolean {
-    if (this.state.gameStatus !== 'playing' || this.state.currentTurn !== 'player') {
+    // Use TurnManager to process the tile reveal
+    const result = this.turnManager.processPlayerTileReveal(x, y, this.state, bypassRewind)
+    
+    if (!result.success) {
+      if (result.message) {
+        console.log(result.message)
+      }
       return false
     }
     
-    const tile = getTileAt(this.state.board, x, y)
-    if (!tile || tile.revealed) {
-      return false
+    // Handle trophy awarding (meta-progression that stays in store)
+    if (result.newBoardStatus === 'won') {
+      this.awardTrophies()
     }
     
-    // Check if tile is blocked by a chain
-    if (tile.chainData && tile.chainData.isBlocked) {
-      const requiredTile = getTileAt(this.state.board, tile.chainData.requiredTileX, tile.chainData.requiredTileY)
-      if (requiredTile && !requiredTile.revealed) {
-        console.log('Cannot click this tile - it\'s chained! Must reveal the connected tile first.')
-        return false
-      }
-    }
-    
-    // Check for Rewind protection on dangerous tiles (unless bypassed with SHIFT)
-    // BUT first check if Protection would handle this - if so, don't trigger Rewind
-    const wouldProtectionActivate = tile.owner !== 'player' && 
-                                   this.state.run.temporaryBuffs.protection && 
-                                   this.state.run.temporaryBuffs.protection > 0
-    
-    // Rewind logic removed
-    
-    const success = revealTile(this.state.board, x, y, 'player')
-    if (success) {
-      const newBoardStatus = checkBoardStatus(this.state.board)
-      const isPlayerTile = tile.owner === 'player'
-      
-      // Award trophies when board is won
-      if (newBoardStatus === 'won') {
-        this.awardTrophies()
-      }
-      
-      // Award loot bonus for revealing opponent tiles
-      if (tile.owner === 'opponent') {
-        this.state.run.gold += this.state.run.loot
-      }
-      
-      // RESTING upgrade: heal when revealing neutral tiles
-      if (tile.owner === 'neutral') {
-        const restingCount = this.state.run.upgrades.filter(id => id === 'resting').length
-        if (restingCount > 0) {
-          const healAmount = restingCount * 3
-          this.state.run.hp = Math.min(this.state.run.maxHp, this.state.run.hp + healAmount)
-          console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
-        }
-      }
-      
-      // Handle tile content after checking board status
-      this.handleTileContent(tile)
-      
-      // Check if player died after handling content
-      if (this.state.gameStatus === 'player-died') {
-        return // Exit early if player died
-      }
-      
-      // Check if Protection should activate before consuming it
-      const hadProtection = this.state.run.temporaryBuffs.protection && this.state.run.temporaryBuffs.protection > 0
-      
-      // Consume Protection charge on ANY tile reveal (if active)
-      if (hadProtection) {
-        this.state.run.temporaryBuffs.protection -= 1
-        console.log(`Protection consumed! ${this.state.run.temporaryBuffs.protection} charges remaining.`)
-      }
-      
-      // Player continues turn if they revealed their own tile, or if protection was active
-      let newTurn = 'player'
-      if (newBoardStatus === 'in-progress' && !isPlayerTile && !hadProtection) {
-        // Player revealed opponent/neutral tile without protection - turn ends
-        newTurn = 'opponent'
-      }
-      
-      this.setState({
-        board: { ...this.state.board },
-        boardStatus: newBoardStatus,
-        currentTurn: newTurn
-      })
-      
-      // Handle board completion
-      if (newBoardStatus === 'won') {
-        this.handleBoardWon()
-      } else if (newBoardStatus === 'lost') {
-        this.handleBoardLost()
-      } else if (newTurn === 'opponent') {
-        // Only trigger AI turn if no upgrade choice is pending
-        if (!this.state.upgradeChoice && !this.pendingUpgradeChoice) {
-          this.scheduleAITurn()
+    // Handle monster death vs trophy stealing (requires TrophyManager access)
+    if (result.gameOver && result.newRun.hp <= 0) {
+      const tile = getTileAt(this.state.board, x, y)
+      if (tile && tile.content === TileContent.Monster && tile.monsterData) {
+        // Try to steal a gold trophy to prevent death
+        if (this.stealGoldTrophy(tile.monsterData.name)) {
+          result.newRun.hp = 1 // Survive with 1 HP instead of dying
+          result.gameOver = false
+          console.log(`${tile.monsterData.name} stole a gold trophy! You survive with 1 HP.`)
         }
       }
     }
     
-    return success
+    // Handle Rich upgrade trigger (requires UpgradeManager access)
+    if (result.richUpgradeTriggered) {
+      this.applyRichUpgrade(result.richUpgradeTriggered.x, result.richUpgradeTriggered.y).catch(console.error)
+    }
+    
+    // Handle shop opening
+    if (result.shopOpened) {
+      this.openShop()
+    }
+    
+    // Handle upgrade choice trigger
+    if (result.upgradeChoiceTriggered) {
+      this.triggerUpgradeChoice()
+      this.pendingUpgradeChoice = true
+    }
+    
+    // Update game state
+    this.setState({
+      board: result.newBoard ? { ...result.newBoard } : { ...this.state.board },
+      run: result.newRun ? { ...result.newRun } : { ...this.state.run },
+      boardStatus: result.newBoardStatus || this.state.boardStatus,
+      currentTurn: result.newTurn || this.state.currentTurn,
+      gameStatus: result.gameOver ? 'player-died' : this.state.gameStatus
+    })
+    
+    // Handle board completion
+    if (result.newBoardStatus === 'won') {
+      this.handleBoardWon()
+    } else if (result.newBoardStatus === 'lost') {
+      this.handleBoardLost()
+    } else if (this.turnManager.shouldScheduleAITurn(
+      result.newTurn || 'player',
+      result.newBoardStatus || 'in-progress',
+      result.upgradeChoiceTriggered || false,
+      this.pendingUpgradeChoice
+    )) {
+      this.scheduleAITurn()
+    }
+    
+    return true
   }
 
 
