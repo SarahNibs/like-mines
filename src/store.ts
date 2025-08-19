@@ -7,6 +7,7 @@ import { ShopManager } from './ShopManager'
 import { InventoryManager } from './InventoryManager'
 import { UpgradeManager } from './UpgradeManager'
 import { TurnManager } from './TurnManager'
+import { SpellManager } from './SpellManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -20,6 +21,7 @@ class GameStore {
   private inventoryManager: InventoryManager
   private upgradeManager: UpgradeManager
   private turnManager: TurnManager
+  private spellManager: SpellManager
 
   constructor() {
     this.state = createInitialGameState()
@@ -30,6 +32,7 @@ class GameStore {
     this.inventoryManager = new InventoryManager()
     this.upgradeManager = new UpgradeManager()
     this.turnManager = new TurnManager()
+    this.spellManager = new SpellManager()
   }
 
   // Get current state
@@ -1425,6 +1428,14 @@ class GameStore {
     })
     
     console.log(`Debug: Revealed ${playerTilesRevealed} player tiles, board status: ${newBoardStatus}`)
+    
+    // Auto-advance to next level if board is won
+    if (newBoardStatus === 'won') {
+      console.log('Debug: Board won, advancing to next level...')
+      setTimeout(() => {
+        this.nextLevel()
+      }, 100) // Small delay to allow UI to update
+    }
   }
 }
 

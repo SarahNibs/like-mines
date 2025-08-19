@@ -81,7 +81,10 @@ function updateUI() {
     `${state.run.defense}+${state.run.temporaryBuffs.ward}` : 
     state.run.defense.toString()
   
-  statsInfoEl.textContent = `Attack: ${attackDisplay} | Defense: ${defenseDisplay}`
+  // Add mana display for characters with mana
+  const manaDisplay = state.run.maxMana > 0 ? ` | Mana: ${state.run.mana}/${state.run.maxMana}` : ''
+  
+  statsInfoEl.textContent = `Attack: ${attackDisplay} | Defense: ${defenseDisplay}${manaDisplay}`
   
   // Update board border based on active modes
   canvas.className = '' // Reset all classes

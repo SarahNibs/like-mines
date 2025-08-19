@@ -3,6 +3,7 @@ import { PROTECTION } from './items'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
 import { ALL_CHARACTERS } from './characters'
+import { ALL_SPELLS } from './SpellManager'
 
 // Get adjacent tile positions (8-directional)
 function getAdjacentPositions(x: number, y: number): Array<{x: number, y: number}> {
@@ -81,6 +82,11 @@ export function createInitialRunState(): RunState {
     maxInventory: 4, // Starting with 4 inventory slots
     upgrades: [], // No upgrades initially
     trophies: [], // No trophies initially
+    // Spell system (initialized by character creation)
+    mana: 0,
+    maxMana: 0,
+    spells: [],
+    spellEffects: [],
     temporaryBuffs: {} // No temporary buffs initially
   }
 }
@@ -100,6 +106,20 @@ export function createCharacterRunState(characterId: string): RunState {
   // Store character ID for display and full character object for behavior access
   runState.characterId = characterId
   runState.character = character
+  
+  // Initialize spell system
+  runState.mana = character.startingMana
+  runState.maxMana = character.startingMana
+  runState.spells = []
+  runState.spellEffects = []
+  
+  // Add starting spell for non-Fighter characters
+  // NOTE: Never use require() in browser ES modules - always use import at top level
+  if (character.startingMana > 0) {
+    const startingSpell = character.startingSpell || ALL_SPELLS[Math.floor(Math.random() * ALL_SPELLS.length)]
+    runState.spells.push(startingSpell)
+    // Note: Spells are displayed separately from regular inventory in UI
+  }
   
   // Apply character-specific upgrades and their effects
   runState.upgrades = [...character.startingUpgrades]
@@ -240,7 +260,9 @@ export function progressToNextLevel(currentState: GameState): GameState {
     shopItems: [], // Clear shop items for new board
     run: {
       ...currentState.run,
-      currentLevel: newLevel
+      currentLevel: newLevel,
+      // Mana regeneration: +1 mana per level (up to max)
+      mana: Math.min(currentState.run.maxMana, currentState.run.mana + 1)
     }
   }
 }

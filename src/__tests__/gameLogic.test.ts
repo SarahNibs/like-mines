@@ -235,13 +235,18 @@ describe('gameLogic', () => {
         attack: 5,
         defense: 0,
         loot: 0,
-        maxInventory: 5,
+        maxInventory: 4,
         upgrades: [],
         trophies: [],
-        temporaryBuffs: {}
+        temporaryBuffs: {},
+        // Spell system fields
+        mana: 0,
+        maxMana: 0,
+        spells: [],
+        spellEffects: []
       })
       
-      expect(runState.inventory).toHaveLength(5)
+      expect(runState.inventory).toHaveLength(4)
       expect(runState.inventory.every(slot => slot === null)).toBe(true)
     })
 

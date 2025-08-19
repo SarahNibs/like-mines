@@ -1,4 +1,4 @@
-import { ItemData } from './types'
+import { ItemData, SpellData } from './types'
 import { PROTECTION, TRANSMUTE, STAFF_OF_FIREBALLS } from './items'
 
 export interface Character {
@@ -8,6 +8,8 @@ export interface Character {
   description: string
   startingUpgrades: string[]
   startingItems: ItemData[]
+  startingMana: number // Starting and max mana
+  startingSpell?: SpellData // Starting spell (random if not specified)
 }
 
 export const FIGHTER: Character = {
@@ -16,7 +18,8 @@ export const FIGHTER: Character = {
   icon: '⚔️',
   description: 'Attack, Defense, and Healthy upgrades',
   startingUpgrades: ['attack', 'defense', 'healthy'],
-  startingItems: [] // Base Scroll of Protection added automatically
+  startingItems: [], // Base Scroll of Protection added automatically
+  startingMana: 0 // Fighter has no mana system
 }
 
 export const CLERIC: Character = {
@@ -25,7 +28,8 @@ export const CLERIC: Character = {
   icon: '🛡️',
   description: 'Resting and Defense upgrades, 2 extra Scrolls of Protection',
   startingUpgrades: ['resting', 'defense'],
-  startingItems: [PROTECTION, PROTECTION] // 2 extra (+ 1 base = 3 total)
+  startingItems: [PROTECTION, PROTECTION], // 2 extra (+ 1 base = 3 total)
+  startingMana: 3 // 3/3 mana
 }
 
 export const WIZARD: Character = {
@@ -34,7 +38,8 @@ export const WIZARD: Character = {
   icon: '🧙',
   description: 'Wisdom upgrade, Staff of Fireballs, and 3 Transmutes (no Protection)',
   startingUpgrades: ['wisdom'],
-  startingItems: [STAFF_OF_FIREBALLS, TRANSMUTE, TRANSMUTE, TRANSMUTE] // Staff + 3 transmutes, no protection
+  startingItems: [STAFF_OF_FIREBALLS, TRANSMUTE, TRANSMUTE, TRANSMUTE], // Staff + 3 transmutes, no protection
+  startingMana: 4 // 4/4 mana
 }
 
 export const RANGER: Character = {
@@ -43,7 +48,8 @@ export const RANGER: Character = {
   icon: '🏹',
   description: 'Two Attack upgrades and Quick upgrade',
   startingUpgrades: ['attack', 'attack', 'quick'],
-  startingItems: [] // Base Scroll of Protection added automatically
+  startingItems: [], // Base Scroll of Protection added automatically
+  startingMana: 2 // 2/2 mana
 }
 
 export const TOURIST: Character = {
@@ -52,7 +58,8 @@ export const TOURIST: Character = {
   icon: '🎒',
   description: 'Rich, Income, and Traders upgrades',
   startingUpgrades: ['rich', 'income', 'traders'],
-  startingItems: [] // Base Scroll of Protection added automatically
+  startingItems: [], // Base Scroll of Protection added automatically
+  startingMana: 2 // 2/2 mana
 }
 
 export const BELOW: Character = {
@@ -61,7 +68,8 @@ export const BELOW: Character = {
   icon: '🔄',
   description: 'Right Hand, Left Hand, and Bag upgrades',
   startingUpgrades: ['right-hand', 'left-hand', 'bag'],
-  startingItems: [] // Base Scroll of Protection added automatically
+  startingItems: [], // Base Scroll of Protection added automatically
+  startingMana: 2 // 2/2 mana
 }
 
 export const ALL_CHARACTERS: Character[] = [

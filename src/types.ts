@@ -42,6 +42,32 @@ export interface ItemData {
   } // Multi-use item data
 }
 
+export interface SpellData {
+  id: string
+  name: string
+  description: string
+  icon: string
+  manaCost: number
+  targetType: 'none' | 'tile' | 'monster' // Whether spell requires targeting
+}
+
+export interface SpellEffect {
+  spellId: string
+  remainingTurns: number
+  tileX?: number
+  tileY?: number
+  damage?: number
+}
+
+// Type guard functions
+export function isSpellData(item: ItemData | SpellData): item is SpellData {
+  return 'manaCost' in item && 'targetType' in item
+}
+
+export function isItemData(item: ItemData | SpellData): item is ItemData {
+  return !isSpellData(item)
+}
+
 export interface MonsterData {
   id: string
   name: string
@@ -119,12 +145,17 @@ export interface RunState {
   attack: number
   defense: number
   loot: number // Gold gained per opponent tile revealed or monster fought
-  inventory: (ItemData | null)[] // 5 slots, null = empty
+  inventory: (ItemData | SpellData | null)[] // 5 slots, null = empty, can contain spells
   maxInventory: number // Maximum inventory slots (increased by Bag upgrades)
   upgrades: string[] // Array of upgrade IDs that have been acquired
   trophies: Trophy[] // Player's trophy collection
   characterId?: string // Selected character ID for display
   character?: import('./characters').Character // Full character object for behavior access
+  // Spell system
+  mana: number // Current mana
+  maxMana: number // Maximum mana
+  spells: SpellData[] // Known spells (first spell appears in inventory)
+  spellEffects: SpellEffect[] // Active ongoing spell effects
   temporaryBuffs: {
     ward?: number // Defense boost for next fight
     blaze?: number // Attack boost for next fight
