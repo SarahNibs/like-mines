@@ -154,6 +154,10 @@ export function createCharacterRunState(characterId: string): RunState {
       case 'resting':
         // These are handled during board generation or other game events
         break
+      case 'meditation':
+        runState.maxMana += 2
+        runState.mana += 2 // Also increase current mana
+        break
     }
   })
   
@@ -188,6 +192,7 @@ export function createInitialGameState(): GameState {
     keyMode: false,
     staffMode: false,
     ringMode: false,
+    spellTargetMode: false,
     shopOpen: false,
     shopItems: []
   }
@@ -326,6 +331,20 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
   return totalDamageToPlayer
 }
 
+// Handle monster defeat effects (gold gain, Rich upgrade)
+export function handleMonsterDefeat(runState: RunState, tileX: number, tileY: number): { goldGained: number, richTriggered: boolean } {
+  // Gain gold based on loot stat
+  runState.gold += runState.loot
+  
+  // Check for Rich upgrade trigger
+  const richTriggered = runState.upgrades.includes('rich')
+  
+  return {
+    goldGained: runState.loot,
+    richTriggered
+  }
+}
+
 // Add item to inventory, returns true if successful, false if full
 export function addItemToInventory(runState: RunState, item: ItemData): boolean {
   // Find first empty slot
@@ -361,6 +380,10 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
     case 'health-potion':
       runState.hp = Math.min(runState.maxHp, runState.hp + 8)
       return 'Used Health Potion! Gained 8 HP.'
+      
+    case 'mana-potion':
+      runState.mana = Math.min(runState.maxMana, runState.mana + 3)
+      return 'Used Mana Potion! Gained 3 mana.'
       
     case 'crystal-ball':
       // This shouldn't be called since crystal ball is not immediate anymore

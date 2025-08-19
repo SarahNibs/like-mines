@@ -42,13 +42,9 @@ export function generateClue(board: Board, ownedUpgrades: string[] = []): Probab
   const rightHandNonPlayerTiles = 1
 
   // Separate neutral and opponent tiles for better filling logic
-  const neutralTiles = nonPlayerTiles.filter(tile => tile.owner === 'neutral')
-  const opponentTiles = nonPlayerTiles.filter(tile => tile.owner === 'opponent')
-  
-  // Shuffle available tiles
+  // Shuffle available tiles (uniform distribution for non-player tiles)
   const shuffledPlayerTiles = [...playerTiles].sort(() => Math.random() - 0.5)
-  const shuffledNeutralTiles = [...neutralTiles].sort(() => Math.random() - 0.5)
-  const shuffledOpponentTiles = [...opponentTiles].sort(() => Math.random() - 0.5)
+  const shuffledNonPlayerTiles = [...nonPlayerTiles].sort(() => Math.random() - 0.5)
 
   // Build hands with proper filling logic
   const handA: Tile[] = []
@@ -65,20 +61,12 @@ export function generateClue(board: Board, ownedUpgrades: string[] = []): Probab
   handA.push(...shuffledPlayerTiles.slice(playerTilesUsed, playerTilesUsed + playerTilesForA))
   playerTilesUsed += playerTilesForA
 
-  // Fill remaining Hand A slots with neutral tiles, then opponent tiles
-  let neutralTilesUsed = 0
-  let opponentTilesUsed = 0
+  // Fill remaining Hand A slots with non-player tiles (uniform distribution)
+  let nonPlayerTilesUsed = 0
   
-  while (handA.length < targetHandASize) {
-    if (neutralTilesUsed < shuffledNeutralTiles.length) {
-      handA.push(shuffledNeutralTiles[neutralTilesUsed])
-      neutralTilesUsed++
-    } else if (opponentTilesUsed < shuffledOpponentTiles.length) {
-      handA.push(shuffledOpponentTiles[opponentTilesUsed])
-      opponentTilesUsed++
-    } else {
-      break // No more tiles available
-    }
+  while (handA.length < targetHandASize && nonPlayerTilesUsed < shuffledNonPlayerTiles.length) {
+    handA.push(shuffledNonPlayerTiles[nonPlayerTilesUsed])
+    nonPlayerTilesUsed++
   }
 
   // Fill Hand B
@@ -87,17 +75,10 @@ export function generateClue(board: Board, ownedUpgrades: string[] = []): Probab
   handB.push(...shuffledPlayerTiles.slice(playerTilesUsed, playerTilesUsed + playerTilesForB))
   playerTilesUsed += playerTilesForB
 
-  // Fill remaining Hand B slots with neutral tiles, then opponent tiles  
-  while (handB.length < targetHandBSize) {
-    if (neutralTilesUsed < shuffledNeutralTiles.length) {
-      handB.push(shuffledNeutralTiles[neutralTilesUsed])
-      neutralTilesUsed++
-    } else if (opponentTilesUsed < shuffledOpponentTiles.length) {
-      handB.push(shuffledOpponentTiles[opponentTilesUsed])
-      opponentTilesUsed++
-    } else {
-      break // No more tiles available
-    }
+  // Fill remaining Hand B slots with non-player tiles (uniform distribution)
+  while (handB.length < targetHandBSize && nonPlayerTilesUsed < shuffledNonPlayerTiles.length) {
+    handB.push(shuffledNonPlayerTiles[nonPlayerTilesUsed])
+    nonPlayerTilesUsed++
   }
 
   // Shuffle each hand

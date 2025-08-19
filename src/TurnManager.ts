@@ -23,6 +23,8 @@ export interface TileRevealContext {
   tile: Tile
   board: Board
   run: RunState
+  x: number
+  y: number
   bypassRewind?: boolean
 }
 
@@ -59,7 +61,7 @@ export class TurnManager {
     }
     
     // Process all the effects in order
-    const context: TileRevealContext = { tile, board: gameState.board, run: gameState.run, bypassRewind }
+    const context: TileRevealContext = { tile, board: gameState.board, run: gameState.run, x, y, bypassRewind }
     
     // 1. Check board status first
     const newBoardStatus = checkBoardStatus(gameState.board)
@@ -397,7 +399,7 @@ export class TurnManager {
     }
     
     // Process all the effects in order (same as processPlayerTileReveal but without turn validation)
-    const context: TileRevealContext = { tile, board: gameState.board, run: gameState.run }
+    const context: TileRevealContext = { tile, board: gameState.board, run: gameState.run, x, y }
     
     // 1. Check board status first
     const newBoardStatus = checkBoardStatus(gameState.board)

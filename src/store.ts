@@ -173,6 +173,12 @@ class GameStore {
       const success = revealTile(this.state.board, aiMove.x, aiMove.y, 'opponent')
       
       if (success) {
+        // Process ongoing spell effects (like Stinking Cloud) during opponent turn
+        const spellMessages = this.spellManager.processSpellEffects(this.state.run, this.state.board)
+        if (spellMessages.length > 0) {
+          spellMessages.forEach(msg => console.log(msg))
+        }
+        
         const newBoardStatus = checkBoardStatus(this.state.board)
         
         // Generate new clue when switching to player turn and add to array
@@ -348,6 +354,132 @@ class GameStore {
       default:
         console.warn(`Unknown behavior trigger type: ${trigger.type}`)
     }
+  }
+
+  // Cast a spell by index
+  castSpell(spellIndex: number): void {
+    const spell = this.state.run.spells[spellIndex]
+    if (!spell) {
+      console.error(`No spell found at index ${spellIndex}`)
+      return
+    }
+
+    // Check mana cost
+    if (this.state.run.mana < spell.manaCost) {
+      console.log(`Not enough mana to cast ${spell.name}. Need ${spell.manaCost}, have ${this.state.run.mana}`)
+      return
+    }
+
+    console.log(`Attempting to cast ${spell.name} (${spell.manaCost} mana)`)
+
+    // Handle different spell target types
+    if (spell.targetType === 'none') {
+      // Cast immediately for spells that don't need targeting
+      this.executeSpell(spell, spellIndex)
+    } else {
+      // Enter targeting mode for spells that need targets
+      this.enterSpellTargetingMode(spell, spellIndex)
+    }
+  }
+
+  private executeSpell(spell: any, spellIndex: number): void {
+    const result = this.spellManager.castSpell(
+      spell,
+      this.state.run,
+      this.state
+    )
+
+    if (result.success) {
+      // Create the new state directly
+      const currentState = this.state
+      const newRunState = {
+        ...currentState.run,
+        mana: currentState.run.mana - spell.manaCost
+      }
+      
+      if (result.newClue) {
+        const newClues = [...currentState.clues, result.newClue]
+        this.setState({
+          ...currentState,
+          run: newRunState,
+          clues: newClues
+        })
+      } else {
+        this.setState({
+          ...currentState,
+          run: newRunState
+        })
+      }
+    } else {
+      console.error(`Failed to cast ${spell.name}: ${result.message}`)
+    }
+  }
+
+  private enterSpellTargetingMode(spell: any, spellIndex: number): void {
+    console.log(`Entering targeting mode for ${spell.name}`)
+    this.setState({
+      ...this.state,
+      spellTargetMode: true,
+      spellTargetData: { spell, spellIndex }
+    })
+  }
+  
+  // Cast spell at target location
+  castSpellAt(x: number, y: number): boolean {
+    if (!this.state.spellTargetMode || !this.state.spellTargetData) {
+      return false
+    }
+    
+    const { spell, spellIndex } = this.state.spellTargetData
+    
+    // Cast the spell with target coordinates
+    const result = this.spellManager.castSpell(
+      spell,
+      this.state.run,
+      this.state,
+      x,
+      y
+    )
+    
+    if (result.success) {
+      // Exit targeting mode and update state
+      const currentState = this.state
+      const newRunState = {
+        ...currentState.run,
+        mana: currentState.run.mana - spell.manaCost
+      }
+      
+      this.setState({
+        ...currentState,
+        run: newRunState,
+        spellTargetMode: false,
+        spellTargetData: undefined
+      })
+      
+      // Handle Rich upgrade trigger
+      if (result.richUpgradeTriggered) {
+        this.applyRichUpgrade(result.richUpgradeTriggered.x, result.richUpgradeTriggered.y).catch(console.error)
+      }
+      
+      console.log(`Successfully cast ${spell.name} at (${x}, ${y})`)
+      if (result.message) {
+        console.log(result.message)
+      }
+      return true
+    } else {
+      console.error(`Failed to cast ${spell.name}: ${result.message}`)
+      return false
+    }
+  }
+  
+  // Cancel spell targeting
+  cancelSpellTargeting(): void {
+    console.log('Spell targeting cancelled.')
+    this.setState({
+      ...this.state,
+      spellTargetMode: false,
+      spellTargetData: undefined
+    })
   }
 
   // Trigger a behavior from external sources (spells, upgrades, etc.)
@@ -1229,6 +1361,7 @@ class GameStore {
           keyMode: false,
           staffMode: false,
           ringMode: false,
+          spellTargetMode: false,
           shopOpen: false,
           shopItems: []
         }
@@ -1433,7 +1566,7 @@ class GameStore {
     if (newBoardStatus === 'won') {
       console.log('Debug: Board won, advancing to next level...')
       setTimeout(() => {
-        this.nextLevel()
+        this.progressToNextBoard()
       }, 100) // Small delay to allow UI to update
     }
   }

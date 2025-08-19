@@ -2,7 +2,9 @@
  * SpellManager - Handles spell definitions, validation, and casting logic
  */
 
-import { SpellData, SpellEffect, RunState, GameState, Board } from './types'
+import { SpellData, SpellEffect, RunState, GameState, Board, ProbabilisticClue } from './types'
+import { generateClue } from './clues'
+import { handleMonsterDefeat } from './gameLogic'
 
 // Spell Definitions
 export const MAGIC_MISSILE: SpellData = {
@@ -53,6 +55,10 @@ export interface SpellCastResult {
   message?: string
   requiresTargeting?: boolean
   effectsAdded?: SpellEffect[]
+  newClue?: ProbabilisticClue
+  richUpgradeTriggered?: { x: number, y: number }
+  upgradeChoiceTriggered?: boolean
+  shopOpened?: boolean
 }
 
 export class SpellManager {
@@ -87,13 +93,15 @@ export class SpellManager {
       return { success: false, message: canCast.reason }
     }
     
-    // Deduct mana
-    run.mana -= spell.manaCost
+    // Note: Mana deduction is handled by the store after successful casting
     
     // Handle each spell type
     switch (spell.id) {
       case 'glimpse':
-        return this.castGlimpse(run)
+        if (!gameState) {
+          return { success: false, message: 'Glimpse spell requires game state' }
+        }
+        return this.castGlimpse(run, gameState)
         
       case 'magic-missile':
         if (targetX === undefined || targetY === undefined) {
@@ -121,12 +129,27 @@ export class SpellManager {
   /**
    * Cast Glimpse spell - generate new clue
    */
-  private castGlimpse(run: RunState): SpellCastResult {
-    // This will need integration with the clue system
-    // For now, just return success - actual implementation comes later
+  private castGlimpse(run: RunState, gameState: GameState): SpellCastResult {
+    // Generate a clue with exactly 2 left hand and 2 right hand tiles (no upgrades)
+    const glimpseClue = generateClue(gameState.board, [])
+    
+    // Override the clue to ensure it has exactly 2 tiles in each hand
+    const fixedClue: ProbabilisticClue = {
+      handA: {
+        tiles: glimpseClue.handA.tiles.slice(0, 2),
+        label: glimpseClue.handA.label
+      },
+      handB: {
+        tiles: glimpseClue.handB.tiles.slice(0, 2),
+        label: glimpseClue.handB.label
+      },
+      hint: 'Glimpse reveals magical insights!'
+    }
+    
     return {
       success: true,
-      message: 'Cast Glimpse - new clue generated!'
+      message: 'Cast Glimpse - new magical insight revealed!',
+      newClue: fixedClue
     }
   }
   
@@ -135,10 +158,45 @@ export class SpellManager {
    */
   private castMagicMissile(run: RunState, gameState: GameState, targetX: number, targetY: number): SpellCastResult {
     const damage = Math.ceil(run.currentLevel / 2)
-    // Implementation will need tile interaction - placeholder for now
-    return {
-      success: true,
-      message: `Cast Magic Missile for ${damage} damage!`
+    const tile = gameState.board.tiles[targetY]?.[targetX]
+    
+    if (!tile) {
+      return { success: false, message: 'Invalid target tile' }
+    }
+    
+    if (!tile.monsterData) {
+      return { success: false, message: 'No monster on target tile' }
+    }
+    
+    // Deal damage to monster
+    const monster = tile.monsterData
+    monster.hp -= damage
+    
+    if (monster.hp <= 0) {
+      // Monster defeated - remove it from tile and handle defeat effects
+      tile.monsterData = undefined
+      const defeatResult = handleMonsterDefeat(run, targetX, targetY)
+      
+      let message = `Magic Missile deals ${damage} damage! ${monster.name} defeated!`
+      if (defeatResult.goldGained > 0) {
+        message += ` Gained ${defeatResult.goldGained} gold.`
+      }
+      
+      const result: SpellCastResult = {
+        success: true,
+        message
+      }
+      
+      if (defeatResult.richTriggered) {
+        result.richUpgradeTriggered = { x: targetX, y: targetY }
+      }
+      
+      return result
+    } else {
+      return {
+        success: true,
+        message: `Magic Missile deals ${damage} damage! ${monster.name} has ${monster.hp} HP remaining.`
+      }
     }
   }
   
@@ -146,11 +204,96 @@ export class SpellManager {
    * Cast Mage Hand - interact with target tile
    */
   private castMageHand(run: RunState, gameState: GameState, targetX: number, targetY: number): SpellCastResult {
-    // Implementation will need tile interaction - placeholder for now
-    return {
-      success: true,
-      message: 'Cast Mage Hand - interacting with tile!'
+    const tile = gameState.board.tiles[targetY]?.[targetX]
+    
+    if (!tile) {
+      return { success: false, message: 'Invalid target tile' }
     }
+    
+    if (tile.revealed) {
+      return { success: false, message: 'Tile already revealed' }
+    }
+    
+    const result: SpellCastResult = {
+      success: true,
+      message: 'Cast Mage Hand!'
+    }
+    
+    // Handle different tile content types
+    if (tile.content === 'permanentUpgrade' && tile.upgradeData) {
+      // Trigger upgrade choice without revealing tile
+      result.message = `Mage Hand activates ${tile.upgradeData.name} upgrade!`
+      result.upgradeChoiceTriggered = true
+      // Clear the upgrade from the tile after interaction
+      tile.content = 'empty' as any
+      tile.upgradeData = undefined
+      
+    } else if (tile.content === 'item' && tile.itemData) {
+      const item = tile.itemData
+      
+      if (item.immediate) {
+        // Apply immediate effect
+        if (item.id === 'gold-coin') {
+          run.gold += 1
+          result.message = 'Mage Hand collects gold coin! +1 gold.'
+        } else if (item.id === 'chest') {
+          run.gold += 4
+          result.message = 'Mage Hand opens treasure chest! +4 gold.'
+        } else if (item.id === 'health-potion') {
+          run.hp = Math.min(run.maxHp, run.hp + 8)
+          result.message = `Mage Hand uses Health Potion! +8 HP (${run.hp}/${run.maxHp}).`
+        } else if (item.id === 'mana-potion') {
+          run.mana = Math.min(run.maxMana, run.mana + 3)
+          result.message = `Mage Hand uses Mana Potion! +3 mana (${run.mana}/${run.maxMana}).`
+        } else if (item.id === 'shop') {
+          result.message = 'Mage Hand activates the shop!'
+          result.shopOpened = true
+        } else {
+          result.message = `Mage Hand activates ${item.name}!`
+        }
+        
+        // Clear the item from the tile after interaction
+        tile.content = 'empty' as any
+        tile.itemData = undefined
+        
+      } else {
+        // Try to add non-immediate item to inventory
+        const success = this.addItemToInventory(run, item)
+        if (success) {
+          result.message = `Mage Hand collects ${item.name}!`
+          // Clear the item from the tile after collection
+          tile.content = 'empty' as any
+          tile.itemData = undefined
+        } else {
+          result.message = `Mage Hand cannot collect ${item.name} - inventory full!`
+        }
+      }
+      
+    } else if (tile.content === 'monster' && tile.monsterData) {
+      return { success: false, message: 'Mage Hand cannot interact with monsters' }
+      
+    } else if (tile.content === 'empty') {
+      result.message = 'Mage Hand finds nothing on this tile.'
+      
+    } else {
+      result.message = 'Mage Hand cannot interact with this tile type.'
+    }
+    
+    return result
+  }
+  
+  /**
+   * Helper method to add item to inventory
+   */
+  private addItemToInventory(run: RunState, item: any): boolean {
+    // Find first empty slot
+    for (let i = 0; i < run.inventory.length; i++) {
+      if (run.inventory[i] === null) {
+        run.inventory[i] = item
+        return true
+      }
+    }
+    return false
   }
   
   /**
@@ -234,9 +377,10 @@ export class SpellManager {
             
             // Remove monster if it dies
             if (tile.monsterData.hp <= 0) {
+              const killedMonsterName = tile.monsterData.name
               tile.content = 'empty' as any
               tile.monsterData = undefined
-              messages.push(`Stinking Cloud killed ${tile.monsterData.name}!`)
+              messages.push(`Stinking Cloud killed ${killedMonsterName}!`)
             }
           }
         }

@@ -68,6 +68,13 @@ export function handleCanvasClick(
       return // Don't do normal tile reveal
     }
     
+    if (state.spellTargetMode) {
+      console.log('Spell targeting mode: attempting to cast spell at', tilePos.x, tilePos.y)
+      const success = gameStore.castSpellAt(tilePos.x, tilePos.y)
+      console.log('Spell casting success:', success)
+      return // Don't do normal tile reveal
+    }
+    
     console.log('Attempting to reveal tile at', tilePos.x, tilePos.y, shiftKey ? '(SHIFT bypass)' : '')
     const wasPlayerTurn = state.currentTurn === 'player'
     const success = gameStore.revealTileAt(tilePos.x, tilePos.y, shiftKey)
@@ -126,6 +133,12 @@ export function handleCanvasRightClick(
   
   if (state.ringMode) {
     gameStore.cancelRing()
+    return
+  }
+  
+  // Right-click cancels spell targeting mode
+  if (state.spellTargetMode) {
+    gameStore.cancelSpellTargeting()
     return
   }
   

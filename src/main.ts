@@ -108,6 +108,10 @@ function updateUI() {
   } else if (state.ringMode) {
     canvas.classList.add('ring-mode')
     canvas.title = 'Ring Mode: Click any fogged tile to remove fog'
+  } else if (state.spellTargetMode) {
+    canvas.classList.add('spell-target-mode')
+    const spellName = state.spellTargetData?.spell?.name || 'Unknown Spell'
+    canvas.title = `Spell Targeting: Click to cast ${spellName}`
   } else {
     canvas.title = ''
   }
@@ -212,7 +216,7 @@ function updateUI() {
   }
   
   // Update inventory
-  updateInventory(state, inventoryEl, (index: number) => gameStore.useInventoryItem(index), (index: number) => gameStore.showDiscardConfirmation(index))
+  updateInventory(state, inventoryEl, (index: number) => gameStore.useInventoryItem(index), (index: number) => gameStore.showDiscardConfirmation(index), (spellIndex: number) => gameStore.castSpell(spellIndex))
   
   // Update upgrades
   updateUpgrades(state, upgradesEl)
@@ -266,6 +270,7 @@ function updateUI() {
     rightHandUpgrades: state.run.upgrades.filter(id => id === 'right-hand').length,
     characterId: state.run.characterId || 'none'
   })
+  
   
   if (window.lastCluesHash !== currentCluesHash) {
     console.log('Updating clues UI - hash changed')
