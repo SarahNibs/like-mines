@@ -358,6 +358,11 @@ export class GameRenderer {
     this.ctx.lineWidth = borderWidth
     this.ctx.strokeRect(x, y, this.tileSize, this.tileSize)
     
+    // Draw chain indicators FIRST (under other content) if tile has chain data
+    if (tile.chainData && !tile.revealed) {
+      this.drawChainIndicator(tile, x, y, board)
+    }
+    
     // Draw tile content/label
     this.ctx.fillStyle = colors.text
     this.ctx.font = `${Math.floor(this.tileSize * 0.25)}px Courier New`
@@ -474,11 +479,6 @@ export class GameRenderer {
         this.ctx.lineTo(x + this.tileSize, y + cornerSize)
         this.ctx.quadraticCurveTo(x + this.tileSize - 2, y + 2, x + this.tileSize - cornerSize, y)
         this.ctx.fill()
-      }
-      
-      // Draw chain indicators if tile has chain data
-      if (tile.chainData) {
-        this.drawChainIndicator(tile, x, y, board)
       }
     }
     
@@ -610,20 +610,72 @@ export class GameRenderer {
       ctx.fillText('🔑', keyX, keyY)
       
     } else if (chainData.isBlocked) {
-      // Regular locked tile - draw large dim door background
+      // Regular locked tile - draw half-circle brown area flush against edge adjacent to key
       if (shouldDrawDoor) {
-        ctx.fillStyle = 'rgba(139, 69, 19, 0.3)' // Dim brown door color
-        ctx.fillRect(x, y, this.tileSize, this.tileSize)
+        // Half-circle with center at tile edge, radius = half tile width
+        const radius = this.tileSize / 2
         
-        // Draw door frame
-        ctx.strokeStyle = 'rgba(101, 67, 33, 0.5)' // Darker brown for frame
-        ctx.lineWidth = 2
-        ctx.strokeRect(x + 2, y + 2, this.tileSize - 4, this.tileSize - 4)
+        ctx.fillStyle = 'rgba(139, 69, 19, 0.6)' // Brown half-circle
+        ctx.beginPath()
         
-        // Draw door handle (small circle)
-        const handleX = x + this.tileSize * 0.8
-        const handleY = y + this.tileSize * 0.5
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.4)' // Dim gold handle
+        // Position arc center at tile edge so flat side is flush with wall
+        let arcCenterX: number, arcCenterY: number
+        
+        if (Math.abs(dx) > Math.abs(dy)) {
+          // Horizontal - arc center on left or right edge
+          arcCenterY = y + this.tileSize / 2 // Centered vertically
+          if (dx > 0) {
+            // Key is to the right, arc center on right edge, flat side flush right
+            arcCenterX = x + this.tileSize
+            ctx.arc(arcCenterX, arcCenterY, radius, Math.PI/2, 3*Math.PI/2)
+          } else {
+            // Key is to the left, arc center on left edge, flat side flush left
+            arcCenterX = x
+            ctx.arc(arcCenterX, arcCenterY, radius, -Math.PI/2, Math.PI/2)
+          }
+        } else {
+          // Vertical - arc center on top or bottom edge
+          arcCenterX = x + this.tileSize / 2 // Centered horizontally
+          if (dy > 0) {
+            // Key is below, arc center on bottom edge, flat side flush bottom
+            arcCenterY = y + this.tileSize
+            ctx.arc(arcCenterX, arcCenterY, radius, Math.PI, 2*Math.PI)
+          } else {
+            // Key is above, arc center on top edge, flat side flush top
+            arcCenterY = y
+            ctx.arc(arcCenterX, arcCenterY, radius, 0, Math.PI)
+          }
+        }
+        
+        ctx.fill()
+        
+        // Draw door handle positioned near the edge adjacent to key
+        let handleX: number, handleY: number
+        if (Math.abs(dx) > Math.abs(dy)) {
+          // Horizontal positioning
+          if (dx > 0) {
+            // Key is to the right, put handle on right side
+            handleX = x + this.tileSize * 0.8
+            handleY = y + this.tileSize * 0.5
+          } else {
+            // Key is to the left, put handle on left side
+            handleX = x + this.tileSize * 0.2
+            handleY = y + this.tileSize * 0.5
+          }
+        } else {
+          // Vertical positioning
+          if (dy > 0) {
+            // Key is below, put handle on bottom side
+            handleX = x + this.tileSize * 0.5
+            handleY = y + this.tileSize * 0.8
+          } else {
+            // Key is above, put handle on top side
+            handleX = x + this.tileSize * 0.5
+            handleY = y + this.tileSize * 0.2
+          }
+        }
+        
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.8)' // Gold handle
         ctx.beginPath()
         ctx.arc(handleX, handleY, 3, 0, Math.PI * 2)
         ctx.fill()

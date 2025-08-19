@@ -371,14 +371,14 @@ function spawnGoldCoins(tiles: Tile[][], width: number, height: number, range: {
 }
 
 // Spawn first aid
-function spawnFirstAid(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG, playerGold: number): void {
-  // Remove level/gold barrier - First Aid can spawn from level 1 regardless of gold
+function spawnHealthPotions(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG, playerGold: number): void {
+  // Health Potions can spawn from level 1 regardless of gold
   const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
   const emptyTiles = getEmptyTiles(tiles, width, height)
-  const firstAid = ALL_ITEMS.find(i => i.id === 'first-aid')!
+  const healthPotion = ALL_ITEMS.find(i => i.id === 'health-potion')!
   
   for (let i = 0; i < count && emptyTiles.length > 0; i++) {
-    placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Item, firstAid)
+    placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Item, healthPotion)
   }
 }
 
@@ -682,7 +682,7 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
   // Step 3: Spawn specific item types with deterministic counts
   spawnMonsters(tiles, width, height, spawnConfig.monsters, rng, actualLevel)
   spawnGoldCoins(tiles, width, height, spawnConfig.goldCoins, rng)
-  spawnFirstAid(tiles, width, height, spawnConfig.firstAid, rng, playerGold)
+  spawnHealthPotions(tiles, width, height, spawnConfig.firstAid, rng, playerGold)
   spawnCrystalBalls(tiles, width, height, spawnConfig.crystalBalls, rng)
   spawnDetectors(tiles, width, height, spawnConfig.detectors, rng)
   spawnTransmutes(tiles, width, height, spawnConfig.transmutes, rng)

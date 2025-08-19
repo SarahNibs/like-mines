@@ -20,12 +20,12 @@ export const CHEST: ItemData = {
   immediate: true
 }
 
-export const FIRST_AID: ItemData = {
-  id: 'first-aid',
-  name: 'First Aid',
-  description: 'Gain 10 HP instantly',
+export const HEALTH_POTION: ItemData = {
+  id: 'health-potion',
+  name: 'Health Potion',
+  description: 'Gain 8 HP when used. Auto-applies if inventory is full.',
   icon: '❤️',
-  immediate: true
+  immediate: false
 }
 
 
@@ -71,7 +71,7 @@ export const TRANSMUTE: ItemData = {
 export const WARD: ItemData = {
   id: 'ward',
   name: 'Ward',
-  description: 'Grants +4 defense for your next fight only',
+  description: 'Grants +3 defense for your next fight only',
   icon: '🔰',
   immediate: false
 }
@@ -147,14 +147,14 @@ export const RING_OF_TRUE_SEEING: ItemData = {
 // All available items
 export const ALL_ITEMS: ItemData[] = [
   // Immediate items
-  GOLD_COIN, CHEST, FIRST_AID, SHOP,
+  GOLD_COIN, CHEST, SHOP,
   // Inventory items  
-  CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
+  CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING, HEALTH_POTION
 ]
 
 // Items available for purchase in shops (excludes shop itself, gold, and negative items like bear traps)
 export const SHOP_ITEMS: ItemData[] = [
-  FIRST_AID, CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
+  HEALTH_POTION, CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
 ]
 
 // =============================================================================

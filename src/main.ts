@@ -66,7 +66,7 @@ function updateUI() {
   levelInfoEl.textContent = `Level ${state.run.currentLevel} / ${state.run.maxLevel}`
   // Calculate resting bonus for HP line display
   const restingCount = state.run.upgrades.filter(id => id === 'resting').length
-  const restingBonus = restingCount > 0 ? ` | Resting: +${restingCount * 3}` : ''
+  const restingBonus = restingCount > 0 ? ` | Resting: +${restingCount * 2}` : ''
   hpInfoEl.textContent = `HP: ${state.run.hp} / ${state.run.maxHp}${restingBonus}`
   goldInfoEl.textContent = `Gold: ${state.run.gold} | Loot: +${state.run.loot}`
   // Calculate effective stats including temporary buffs
@@ -243,9 +243,21 @@ function updateUI() {
     }
   }
   
+  // Collect revealed tile positions for clue UI updates
+  const revealedTileData = []
+  for (let y = 0; y < state.board.height; y++) {
+    for (let x = 0; x < state.board.width; x++) {
+      const tile = state.board.tiles[y][x]
+      if (tile.revealed) {
+        revealedTileData.push(`${x},${y}`)
+      }
+    }
+  }
+  
   const currentCluesHash = JSON.stringify({
     cluesLength: state.clues.length,
     revealedCount: state.board.playerTilesRevealed + state.board.opponentTilesRevealed,
+    revealedTiles: revealedTileData.join('|'), // Include specific revealed tile positions
     annotations: annotationData.join('|'),
     leftHandUpgrades: state.run.upgrades.filter(id => id === 'left-hand').length,
     rightHandUpgrades: state.run.upgrades.filter(id => id === 'right-hand').length,

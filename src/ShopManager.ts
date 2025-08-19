@@ -59,14 +59,29 @@ export class ShopManager {
       
       const shopItems: ShopItem[] = []
       
-      // Add random items
+      // Ensure at least one healing potion by placing it at a random cost position
+      const { HEALTH_POTION } = await import('./items')
+      const randomHealthPotionIndex = Math.floor(Math.random() * totalItemCount)
+      
+      // Add items, guaranteeing healing potion at random position
       for (let i = 0; i < totalItemCount; i++) {
-        const randomItem = SHOP_ITEMS[Math.floor(Math.random() * SHOP_ITEMS.length)]
-        shopItems.push({
-          item: randomItem,
-          cost: itemCosts[i],
-          isUpgrade: false
-        })
+        if (i === randomHealthPotionIndex) {
+          // Place healing potion at this position
+          shopItems.push({
+            item: HEALTH_POTION,
+            cost: itemCosts[i],
+            isUpgrade: false
+          })
+        } else {
+          // Add random item (excluding healing potion to avoid duplicates)
+          const nonHealthPotionItems = SHOP_ITEMS.filter(item => item.id !== 'health-potion')
+          const randomItem = nonHealthPotionItems[Math.floor(Math.random() * nonHealthPotionItems.length)]
+          shopItems.push({
+            item: randomItem,
+            cost: itemCosts[i],
+            isUpgrade: false
+          })
+        }
       }
       
       // Add random upgrades
@@ -176,8 +191,35 @@ export class ShopManager {
       let message: string
       
       if (!success) {
-        message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`
-        console.log(message)
+        // Special handling for auto-apply items when inventory is full
+        const item = shopItem.item as ItemData
+        if (item.id === 'health-potion') {
+          // Auto-apply health potion effect
+          run.hp = Math.min(run.maxHp, run.hp + 8)
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +8 HP (${run.hp}/${run.maxHp})`
+          console.log(message)
+        } else if (item.id === 'ward') {
+          // Auto-apply ward effect
+          if (!run.temporaryBuffs) run.temporaryBuffs = {}
+          run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 3
+          if (!run.upgrades.includes('ward-temp')) {
+            run.upgrades = [...run.upgrades, 'ward-temp']
+          }
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +3 defense (total: +${run.temporaryBuffs.ward})`
+          console.log(message)
+        } else if (item.id === 'blaze') {
+          // Auto-apply blaze effect
+          if (!run.temporaryBuffs) run.temporaryBuffs = {}
+          run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
+          if (!run.upgrades.includes('blaze-temp')) {
+            run.upgrades = [...run.upgrades, 'blaze-temp']
+          }
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze})`
+          console.log(message)
+        } else {
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`
+          console.log(message)
+        }
       } else {
         message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold`
         console.log(message)

@@ -1380,6 +1380,52 @@ class GameStore {
     
     return result.wasStolen
   }
+
+  // Debug methods
+  debugAddGold(amount: number = 1): void {
+    this.setState({
+      run: {
+        ...this.state.run,
+        gold: this.state.run.gold + amount
+      }
+    })
+    console.log(`Debug: Added ${amount} gold (total: ${this.state.run.gold})`)
+  }
+
+  debugAddHealth(amount: number = 10): void {
+    this.setState({
+      run: {
+        ...this.state.run,
+        hp: Math.min(this.state.run.maxHp, this.state.run.hp + amount)
+      }
+    })
+    console.log(`Debug: Added ${amount} HP (current: ${this.state.run.hp}/${this.state.run.maxHp})`)
+  }
+
+  debugRevealAllPlayerTiles(): void {
+    const newBoard = { ...this.state.board }
+    let playerTilesRevealed = 0
+    
+    // Reveal all player tiles
+    for (let y = 0; y < newBoard.height; y++) {
+      for (let x = 0; x < newBoard.width; x++) {
+        const tile = newBoard.tiles[y][x]
+        if (tile.owner === 'player' && !tile.revealed) {
+          revealTile(newBoard, x, y, 'player')
+          playerTilesRevealed++
+        }
+      }
+    }
+    
+    const newBoardStatus = checkBoardStatus(newBoard)
+    
+    this.setState({
+      board: newBoard,
+      boardStatus: newBoardStatus
+    })
+    
+    console.log(`Debug: Revealed ${playerTilesRevealed} player tiles, board status: ${newBoardStatus}`)
+  }
 }
 
 // Export singleton instance

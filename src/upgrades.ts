@@ -67,7 +67,7 @@ export const TRADERS: UpgradeData = {
 export const BAG: UpgradeData = {
   id: 'bag',
   name: 'Bag',
-  description: 'Permanently increases inventory slots by +1',
+  description: 'Permanently increases inventory slots by +2',
   icon: '🎒',
   repeatable: true
 }
@@ -77,7 +77,7 @@ export const LEFT_HAND: UpgradeData = {
   name: 'Left Hand',
   description: 'Adds one more of your tiles to the left hand of all future clues',
   icon: '👈',
-  repeatable: true
+  repeatable: false
 }
 
 export const RIGHT_HAND: UpgradeData = {
@@ -85,22 +85,30 @@ export const RIGHT_HAND: UpgradeData = {
   name: 'Right Hand',
   description: 'Adds one more of your tiles to the right hand of all future clues',
   icon: '👉',
-  repeatable: true
+  repeatable: false
 }
 
 export const RESTING: UpgradeData = {
   id: 'resting',
   name: 'Resting',
-  description: 'Gain +3 HP when revealing neutral tiles',
+  description: 'Gain +2 HP when revealing neutral tiles',
   icon: '🛏️',
   repeatable: true
+}
+
+export const MAGNET: UpgradeData = {
+  id: 'magnet',
+  name: 'Magnet',
+  description: 'When you reveal a tile, collect any adjacent coins',
+  icon: '🧲',
+  repeatable: false
 }
 
 // Temporary buff display upgrades (not selectable, just for UI display)
 export const WARD_TEMP: UpgradeData = {
   id: 'ward-temp',
   name: 'Ward (Active)',
-  description: '+4 defense for your next fight',
+  description: '+3 defense for your next fight',
   icon: '🔰',
   repeatable: false
 }
@@ -126,7 +134,8 @@ export const ALL_UPGRADES: UpgradeData[] = [
   BAG,
   LEFT_HAND,
   RIGHT_HAND,
-  RESTING
+  RESTING,
+  MAGNET
 ]
 
 // Comprehensive array including temporary upgrades for display lookup

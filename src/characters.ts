@@ -32,9 +32,9 @@ export const WIZARD: Character = {
   id: 'wizard',
   name: 'WIZARD',
   icon: '🧙',
-  description: 'Wisdom upgrade, Staff of Fireballs, and 3 Transmutes',
+  description: 'Wisdom upgrade, Staff of Fireballs, and 3 Transmutes (no Protection)',
   startingUpgrades: ['wisdom'],
-  startingItems: [STAFF_OF_FIREBALLS, TRANSMUTE, TRANSMUTE, TRANSMUTE] // Staff + 3 transmutes (+ 1 base protection)
+  startingItems: [STAFF_OF_FIREBALLS, TRANSMUTE, TRANSMUTE, TRANSMUTE] // Staff + 3 transmutes, no protection
 }
 
 export const RANGER: Character = {
@@ -55,9 +55,9 @@ export const TOURIST: Character = {
   startingItems: [] // Base Scroll of Protection added automatically
 }
 
-export const SUB: Character = {
-  id: 'sub',
-  name: 'SUB',
+export const BELOW: Character = {
+  id: 'below',
+  name: 'BELOW',
   icon: '🔄',
   description: 'Right Hand, Left Hand, and Bag upgrades',
   startingUpgrades: ['right-hand', 'left-hand', 'bag'],
@@ -70,5 +70,5 @@ export const ALL_CHARACTERS: Character[] = [
   WIZARD,
   RANGER,
   TOURIST,
-  SUB
+  BELOW
 ]

@@ -92,13 +92,13 @@ export class InventoryManager {
       case 'ward': {
         // Stack ward bonuses
         if (!run.temporaryBuffs) run.temporaryBuffs = {}
-        run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 4
+        run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 3
         if (!run.upgrades.includes('ward-temp')) {
           run.upgrades = [...run.upgrades, 'ward-temp'] // Add to upgrades list for display
         }
         removeItemFromInventoryCallback(run, itemIndex)
         
-        const message = `Ward activated! +4 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`
+        const message = `Ward activated! +3 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`
         console.log(message)
         
         return {
@@ -118,6 +118,21 @@ export class InventoryManager {
         removeItemFromInventoryCallback(run, itemIndex)
         
         const message = `Blaze activated! +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`
+        console.log(message)
+        
+        return {
+          newRun: run,
+          success: true,
+          message
+        }
+      }
+      
+      case 'health-potion': {
+        // Apply health potion effect
+        run.hp = Math.min(run.maxHp, run.hp + 8)
+        removeItemFromInventoryCallback(run, itemIndex)
+        
+        const message = `Health Potion used! Gained 8 HP (${run.hp}/${run.maxHp}).`
         console.log(message)
         
         return {

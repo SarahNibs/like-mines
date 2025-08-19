@@ -65,8 +65,7 @@ export class UpgradeManager {
     
     // For repeatable upgrades, add multiple instances; for non-repeatable, only add once
     const isRepeatable = [
-      'attack', 'defense', 'healthy', 'income', 'traders', 'bag', 
-      'left-hand', 'right-hand', 'resting'
+      'attack', 'defense', 'healthy', 'income', 'traders', 'bag', 'resting'
     ].includes(upgradeId)
     
     if (isRepeatable || !run.upgrades.includes(upgradeId)) {
@@ -95,8 +94,8 @@ export class UpgradeManager {
         run.loot += 1
         break
       case 'bag':
-        run.maxInventory += 1
-        run.inventory.push(null) // Add one more inventory slot
+        run.maxInventory += 2
+        run.inventory.push(null, null) // Add two more inventory slots
         break
       // QUICK, RICH, WISDOM, TRADERS, LEFT_HAND, RIGHT_HAND are passive
       case 'quick':
@@ -106,6 +105,7 @@ export class UpgradeManager {
       case 'left-hand':
       case 'right-hand':
       case 'resting':
+      case 'magnet':
         // These are handled at clue generation / board generation / tile reveal time
         break
       default:
@@ -292,7 +292,7 @@ export class UpgradeManager {
         return {
           isPassive: false,
           triggeredBy: [],
-          description: 'Immediately adds one inventory slot'
+          description: 'Immediately adds two inventory slots'
         }
       case 'quick':
         return {
@@ -334,7 +334,13 @@ export class UpgradeManager {
         return {
           isPassive: true,
           triggeredBy: ['tile reveal'],
-          description: 'Gain +1 HP when revealing your own tiles'
+          description: 'Gain +2 HP when revealing neutral tiles'
+        }
+      case 'magnet':
+        return {
+          isPassive: true,
+          triggeredBy: ['tile reveal'],
+          description: 'When you reveal a tile, collect any adjacent coins'
         }
       default:
         return {

@@ -166,8 +166,8 @@ describe('InventoryManager', () => {
       )
 
       expect(result.success).toBe(true)
-      expect(result.message).toContain('Ward activated! +4 defense')
-      expect(result.newRun.temporaryBuffs?.ward).toBe(4)
+      expect(result.message).toContain('Ward activated! +3 defense')
+      expect(result.newRun.temporaryBuffs?.ward).toBe(3)
       expect(result.newRun.upgrades).toContain('ward-temp')
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
     })

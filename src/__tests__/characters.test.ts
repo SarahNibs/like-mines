@@ -5,7 +5,7 @@ import {
   WIZARD,
   RANGER,
   TOURIST,
-  SUB,
+  BELOW,
   ALL_CHARACTERS
 } from '../characters'
 
@@ -28,7 +28,7 @@ describe('characters', () => {
       testCharacter(WIZARD)
       testCharacter(RANGER)
       testCharacter(TOURIST)
-      testCharacter(SUB)
+      testCharacter(BELOW)
     })
 
     it('should have unique character IDs', () => {
@@ -117,7 +117,7 @@ describe('characters', () => {
       expect(ALL_CHARACTERS).toContain(WIZARD)
       expect(ALL_CHARACTERS).toContain(RANGER)
       expect(ALL_CHARACTERS).toContain(TOURIST)
-      expect(ALL_CHARACTERS).toContain(SUB)
+      expect(ALL_CHARACTERS).toContain(BELOW)
     })
 
     it('should have reasonable character count', () => {

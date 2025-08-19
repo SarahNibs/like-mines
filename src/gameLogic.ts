@@ -77,8 +77,8 @@ export function createInitialRunState(): RunState {
     attack: 5, // Starting attack power
     defense: 0, // Starting defense
     loot: 0, // Starting loot bonus per opponent tile/monster
-    inventory: [null, null, null, null, null], // Empty inventory for character selection
-    maxInventory: 5, // Starting with 5 inventory slots
+    inventory: [null, null, null, null], // Empty inventory for character selection
+    maxInventory: 4, // Starting with 4 inventory slots
     upgrades: [], // No upgrades initially
     trophies: [], // No trophies initially
     temporaryBuffs: {} // No temporary buffs initially
@@ -121,8 +121,8 @@ export function createCharacterRunState(characterId: string): RunState {
         runState.loot += 1
         break
       case 'bag':
-        runState.maxInventory += 1
-        runState.inventory.push(null) // Add one more inventory slot
+        runState.maxInventory += 2
+        runState.inventory.push(null, null) // Add two more inventory slots
         break
       // QUICK, RICH, WISDOM, TRADERS, LEFT_HAND, RIGHT_HAND, RESTING are passive
       case 'quick':
@@ -137,8 +137,10 @@ export function createCharacterRunState(characterId: string): RunState {
     }
   })
   
-  // Fill inventory with character items plus base Scroll of Protection
-  const allStartingItems = [PROTECTION, ...character.startingItems]
+  // Fill inventory with character items plus base Scroll of Protection (except for Wizard)
+  const allStartingItems = character.id === 'wizard' 
+    ? character.startingItems  // Wizard gets no base protection
+    : [PROTECTION, ...character.startingItems]
   
   for (let i = 0; i < allStartingItems.length && i < runState.maxInventory; i++) {
     runState.inventory[i] = allStartingItems[i]
@@ -334,9 +336,9 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       runState.gold += 4
       return 'Gained 4 gold from treasure chest!'
       
-    case 'first-aid':
-      runState.hp = Math.min(runState.maxHp, runState.hp + 10)
-      return 'Used first aid! Gained 10 HP.'
+    case 'health-potion':
+      runState.hp = Math.min(runState.maxHp, runState.hp + 8)
+      return 'Used Health Potion! Gained 8 HP.'
       
     case 'crystal-ball':
       // This shouldn't be called since crystal ball is not immediate anymore

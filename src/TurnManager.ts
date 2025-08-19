@@ -162,10 +162,55 @@ export class TurnManager {
     if (context.tile.owner === 'neutral') {
       const restingCount = context.run.upgrades.filter(id => id === 'resting').length
       if (restingCount > 0) {
-        const healAmount = restingCount * 3
+        const healAmount = restingCount * 2
         context.run.hp = Math.min(context.run.maxHp, context.run.hp + healAmount)
         console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
       }
+    }
+    
+    // MAGNET upgrade: collect adjacent coins when revealing any tile
+    if (context.run.upgrades.includes('magnet')) {
+      this.processMagnetEffect(context)
+    }
+  }
+  
+  /**
+   * Process Magnet upgrade effect - collect adjacent coins
+   */
+  private processMagnetEffect(context: TileRevealContext): void {
+    const board = context.board
+    const x = context.x
+    const y = context.y
+    let coinsCollected = 0
+    
+    // Check all 8 adjacent positions
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue // Skip the center tile
+        
+        const adjX = x + dx
+        const adjY = y + dy
+        
+        // Check bounds
+        if (adjX >= 0 && adjX < board.width && adjY >= 0 && adjY < board.height) {
+          const adjTile = board.tiles[adjY][adjX]
+          
+          // Check if tile has a coin (gold-coin item)
+          if (adjTile.content === TileContent.Item && adjTile.itemData && adjTile.itemData.id === 'gold-coin') {
+            // Collect the coin
+            context.run.gold += 1
+            coinsCollected++
+            
+            // Remove the coin from the tile
+            adjTile.content = TileContent.Empty
+            adjTile.itemData = undefined
+          }
+        }
+      }
+    }
+    
+    if (coinsCollected > 0) {
+      console.log(`Magnet: Collected ${coinsCollected} adjacent coin(s) for +${coinsCollected} gold!`)
     }
   }
   
@@ -272,11 +317,11 @@ export class TurnManager {
     if (item.id === 'ward') {
       // Apply ward effect immediately
       if (!run.temporaryBuffs) run.temporaryBuffs = {}
-      run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 4
+      run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 3
       if (!run.upgrades.includes('ward-temp')) {
         run.upgrades.push('ward-temp')
       }
-      console.log(`Inventory full! Ward auto-applied: +4 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
+      console.log(`Inventory full! Ward auto-applied: +3 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
     } else if (item.id === 'blaze') {
       // Apply blaze effect immediately
       if (!run.temporaryBuffs) run.temporaryBuffs = {}
@@ -285,6 +330,10 @@ export class TurnManager {
         run.upgrades.push('blaze-temp')
       }
       console.log(`Inventory full! Blaze auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`)
+    } else if (item.id === 'health-potion') {
+      // Apply health potion effect immediately
+      run.hp = Math.min(run.maxHp, run.hp + 8)
+      console.log(`Inventory full! Health Potion auto-applied: +8 HP (${run.hp}/${run.maxHp}).`)
     } else {
       console.log(`Inventory full! ${item.name} was lost.`)
     }
