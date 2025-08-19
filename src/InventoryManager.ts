@@ -142,6 +142,21 @@ export class InventoryManager {
         }
       }
       
+      case 'mana-potion': {
+        // Apply mana potion effect
+        run.mana = Math.min(run.maxMana, run.mana + 3)
+        removeItemFromInventoryCallback(run, itemIndex)
+        
+        const message = `Mana Potion used! Gained 3 mana (${run.mana}/${run.maxMana}).`
+        console.log(message)
+        
+        return {
+          newRun: run,
+          success: true,
+          message
+        }
+      }
+      
       case 'protection': {
         // Stack protection charges
         if (!run.temporaryBuffs) run.temporaryBuffs = {}

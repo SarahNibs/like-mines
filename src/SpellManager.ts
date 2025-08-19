@@ -2,9 +2,9 @@
  * SpellManager - Handles spell definitions, validation, and casting logic
  */
 
-import { SpellData, SpellEffect, RunState, GameState, Board, ProbabilisticClue } from './types'
+import { SpellData, SpellEffect, RunState, GameState, Board, ProbabilisticClue, TileContent } from './types'
 import { generateClue } from './clues'
-import { handleMonsterDefeat } from './gameLogic'
+import { defeatMonster } from './gameLogic'
 
 // Spell Definitions
 export const MAGIC_MISSILE: SpellData = {
@@ -119,7 +119,7 @@ export class SpellManager {
         if (targetX === undefined || targetY === undefined) {
           return { success: false, requiresTargeting: true }
         }
-        return this.castStinkingCloud(run, targetX, targetY)
+        return this.castStinkingCloud(run, gameState!.board, targetX, targetY)
         
       default:
         return { success: false, message: `Unknown spell: ${spell.id}` }
@@ -168,16 +168,11 @@ export class SpellManager {
       return { success: false, message: 'No monster on target tile' }
     }
     
-    // Deal damage to monster
-    const monster = tile.monsterData
-    monster.hp -= damage
+    // Use centralized monster defeat handling
+    const defeatResult = defeatMonster(tile, damage, run)
     
-    if (monster.hp <= 0) {
-      // Monster defeated - remove it from tile and handle defeat effects
-      tile.monsterData = undefined
-      const defeatResult = handleMonsterDefeat(run, targetX, targetY)
-      
-      let message = `Magic Missile deals ${damage} damage! ${monster.name} defeated!`
+    if (defeatResult.defeated) {
+      let message = `Magic Missile deals ${damage} damage! ${defeatResult.monsterName} defeated!`
       if (defeatResult.goldGained > 0) {
         message += ` Gained ${defeatResult.goldGained} gold.`
       }
@@ -193,9 +188,10 @@ export class SpellManager {
       
       return result
     } else {
+      const monster = tile.monsterData
       return {
         success: true,
-        message: `Magic Missile deals ${damage} damage! ${monster.name} has ${monster.hp} HP remaining.`
+        message: `Magic Missile deals ${damage} damage! ${monster?.name} has ${monster?.hp} HP remaining.`
       }
     }
   }
@@ -220,15 +216,15 @@ export class SpellManager {
     }
     
     // Handle different tile content types
-    if (tile.content === 'permanentUpgrade' && tile.upgradeData) {
+    if (tile.content === TileContent.PermanentUpgrade && tile.upgradeData) {
       // Trigger upgrade choice without revealing tile
       result.message = `Mage Hand activates ${tile.upgradeData.name} upgrade!`
       result.upgradeChoiceTriggered = true
       // Clear the upgrade from the tile after interaction
-      tile.content = 'empty' as any
+      tile.content = TileContent.Empty
       tile.upgradeData = undefined
       
-    } else if (tile.content === 'item' && tile.itemData) {
+    } else if (tile.content === TileContent.Item && tile.itemData) {
       const item = tile.itemData
       
       if (item.immediate) {
@@ -253,7 +249,7 @@ export class SpellManager {
         }
         
         // Clear the item from the tile after interaction
-        tile.content = 'empty' as any
+        tile.content = TileContent.Empty
         tile.itemData = undefined
         
       } else {
@@ -262,17 +258,17 @@ export class SpellManager {
         if (success) {
           result.message = `Mage Hand collects ${item.name}!`
           // Clear the item from the tile after collection
-          tile.content = 'empty' as any
+          tile.content = TileContent.Empty
           tile.itemData = undefined
         } else {
           result.message = `Mage Hand cannot collect ${item.name} - inventory full!`
         }
       }
       
-    } else if (tile.content === 'monster' && tile.monsterData) {
+    } else if (tile.content === TileContent.Monster && tile.monsterData) {
       return { success: false, message: 'Mage Hand cannot interact with monsters' }
       
-    } else if (tile.content === 'empty') {
+    } else if (tile.content === TileContent.Empty) {
       result.message = 'Mage Hand finds nothing on this tile.'
       
     } else {
@@ -299,7 +295,7 @@ export class SpellManager {
   /**
    * Cast Stinking Cloud - create persistent damage effect
    */
-  private castStinkingCloud(run: RunState, targetX: number, targetY: number): SpellCastResult {
+  private castStinkingCloud(run: RunState, board: Board, targetX: number, targetY: number): SpellCastResult {
     const effect: SpellEffect = {
       spellId: 'stinking-cloud',
       remainingTurns: -1, // Permanent until manually removed
@@ -314,45 +310,64 @@ export class SpellManager {
     
     run.spellEffects.push(effect)
     
-    return {
+    // Deal initial damage immediately when cast
+    const initialResult = this.processStinkingCloudEffect(effect, board, run)
+    let resultMessage = `Cast Stinking Cloud at (${targetX}, ${targetY})!`
+    if (initialResult.messages.length > 0) {
+      resultMessage += ` ${initialResult.messages.join(' ')}`
+    }
+    
+    // Create the spell cast result
+    const result: SpellCastResult = {
       success: true,
-      message: `Cast Stinking Cloud at (${targetX}, ${targetY})!`,
+      message: resultMessage,
       effectsAdded: [effect]
     }
+    
+    // Handle initial Rich upgrade triggers from immediate damage
+    if (initialResult.richUpgradeTriggers.length > 0) {
+      // For initial cast, use the center position for Rich upgrade trigger
+      result.richUpgradeTriggered = { x: targetX, y: targetY }
+    }
+    
+    return result
   }
   
   /**
    * Process ongoing spell effects (called on opponent turns)
    */
-  processSpellEffects(run: RunState, board: Board): string[] {
+  processSpellEffects(run: RunState, board: Board): { messages: string[], richUpgradeTriggers: Array<{ x: number, y: number }> } {
     const messages: string[] = []
+    const richUpgradeTriggers: Array<{ x: number, y: number }> = []
     
     if (!run.spellEffects || run.spellEffects.length === 0) {
-      return messages
+      return { messages, richUpgradeTriggers }
     }
     
     // Process each active spell effect
     for (const effect of run.spellEffects) {
       if (effect.spellId === 'stinking-cloud') {
-        const cloudMessages = this.processStinkingCloudEffect(effect, board)
-        messages.push(...cloudMessages)
+        const cloudResult = this.processStinkingCloudEffect(effect, board, run)
+        messages.push(...cloudResult.messages)
+        richUpgradeTriggers.push(...cloudResult.richUpgradeTriggers)
       }
     }
     
     // Remove expired effects
     run.spellEffects = run.spellEffects.filter(effect => effect.remainingTurns !== 0)
     
-    return messages
+    return { messages, richUpgradeTriggers }
   }
   
   /**
    * Process Stinking Cloud damage effect
    */
-  private processStinkingCloudEffect(effect: SpellEffect, board: Board): string[] {
+  private processStinkingCloudEffect(effect: SpellEffect, board: Board, runState?: RunState): { messages: string[], richUpgradeTriggers: Array<{ x: number, y: number }> } {
     const messages: string[] = []
+    const richUpgradeTriggers: Array<{ x: number, y: number }> = []
     
-    if (!effect.tileX || !effect.tileY || !effect.damage) {
-      return messages
+    if (effect.tileX === undefined || effect.tileY === undefined || !effect.damage) {
+      return { messages, richUpgradeTriggers }
     }
     
     // Apply damage to monsters on target tile and adjacent tiles
@@ -372,15 +387,31 @@ export class SpellManager {
           
           // Apply damage to monsters
           if (tile.monsterData && !tile.revealed) {
-            tile.monsterData.hp -= effect.damage
-            monstersAffected++
-            
-            // Remove monster if it dies
-            if (tile.monsterData.hp <= 0) {
-              const killedMonsterName = tile.monsterData.name
-              tile.content = 'empty' as any
-              tile.monsterData = undefined
-              messages.push(`Stinking Cloud killed ${killedMonsterName}!`)
+            if (runState) {
+              // Use centralized defeat handling when runState is available
+              const defeatResult = defeatMonster(tile, effect.damage, runState)
+              if (defeatResult.defeated) {
+                messages.push(`Stinking Cloud killed ${defeatResult.monsterName}!`)
+                if (defeatResult.goldGained > 0) {
+                  messages.push(`Gained ${defeatResult.goldGained} gold.`)
+                }
+                // Collect Rich upgrade triggers
+                if (defeatResult.richTriggered) {
+                  richUpgradeTriggers.push({ x, y })
+                }
+              }
+              monstersAffected++
+            } else {
+              // Fallback for cases without runState (shouldn't happen in normal gameplay)
+              tile.monsterData.hp -= effect.damage
+              monstersAffected++
+              
+              if (tile.monsterData.hp <= 0) {
+                const killedMonsterName = tile.monsterData.name
+                tile.content = TileContent.Empty
+                tile.monsterData = undefined
+                messages.push(`Stinking Cloud killed ${killedMonsterName}!`)
+              }
             }
           }
         }
@@ -391,7 +422,7 @@ export class SpellManager {
       messages.push(`Stinking Cloud dealt ${effect.damage} damage to ${monstersAffected} monster(s)`)
     }
     
-    return messages
+    return { messages, richUpgradeTriggers }
   }
   
   /**

@@ -5,7 +5,7 @@
 import { isSpellData } from './types'
 
 // Update inventory display
-export function updateInventory(state: any, inventoryEl: HTMLElement, onUseItem: (index: number) => void, onDiscardItem: (index: number) => void) {
+export function updateInventory(state: any, inventoryEl: HTMLElement, onUseItem: (index: number) => void, onDiscardItem: (index: number) => void, onCastSpell?: (spellIndex: number) => void) {
   // Add null checks for DOM elements
   if (!inventoryEl) {
     console.error('Inventory element not found')
@@ -22,8 +22,11 @@ export function updateInventory(state: any, inventoryEl: HTMLElement, onUseItem:
       spellSlot.textContent = spell.icon
       spellSlot.title = `${spell.name}: ${spell.description}\nMana Cost: ${spell.manaCost}\nClick to cast`
       spellSlot.addEventListener('click', () => {
-        // TODO: Handle spell casting - for now just log
-        console.log(`Attempting to cast spell: ${spell.name}`)
+        if (onCastSpell) {
+          onCastSpell(spellIndex)
+        } else {
+          console.log(`No spell casting handler provided for ${spell.name}`)
+        }
       })
       inventoryEl.appendChild(spellSlot)
     })

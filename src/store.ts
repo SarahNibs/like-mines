@@ -1,5 +1,5 @@
 import { GameState, getTileAt, TileContent } from './types'
-import { createInitialGameState, createCharacterRunState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect } from './gameLogic'
+import { createInitialGameState, createCharacterRunState, revealTile, checkBoardStatus, progressToNextLevel, fightMonster, addItemToInventory, removeItemFromInventory, applyItemEffect, defeatMonster } from './gameLogic'
 import { DumbAI, AIOpponent } from './ai'
 import { generateClue } from './clues'
 import { TrophyManager } from './TrophyManager'
@@ -174,9 +174,14 @@ class GameStore {
       
       if (success) {
         // Process ongoing spell effects (like Stinking Cloud) during opponent turn
-        const spellMessages = this.spellManager.processSpellEffects(this.state.run, this.state.board)
-        if (spellMessages.length > 0) {
-          spellMessages.forEach(msg => console.log(msg))
+        const spellResults = this.spellManager.processSpellEffects(this.state.run, this.state.board)
+        if (spellResults.messages.length > 0) {
+          spellResults.messages.forEach(msg => console.log(msg))
+        }
+        
+        // Handle Rich upgrade triggers from spell effects
+        for (const trigger of spellResults.richUpgradeTriggers) {
+          this.applyRichUpgrade(trigger.x, trigger.y).catch(console.error)
         }
         
         const newBoardStatus = checkBoardStatus(this.state.board)
@@ -459,6 +464,17 @@ class GameStore {
       // Handle Rich upgrade trigger
       if (result.richUpgradeTriggered) {
         this.applyRichUpgrade(result.richUpgradeTriggered.x, result.richUpgradeTriggered.y).catch(console.error)
+      }
+      
+      // Handle upgrade choice trigger
+      if (result.upgradeChoiceTriggered) {
+        this.triggerUpgradeChoice()
+        this.pendingUpgradeChoice = true
+      }
+      
+      // Handle shop opening
+      if (result.shopOpened) {
+        this.openShop()
       }
       
       console.log(`Successfully cast ${spell.name} at (${x}, ${y})`)
@@ -939,28 +955,21 @@ class GameStore {
       return false
     }
     
-    // Deal 6 damage bypassing defense
+    // Deal 6 damage using centralized monster defeat handling
     const damage = 6
-    tile.monsterData.hp -= damage
-    console.log(`Staff of Fireballs hits ${tile.monsterData.name} for ${damage} damage! (${tile.monsterData.hp} HP remaining)`)
+    const defeatResult = defeatMonster(tile, damage, this.state.run)
     
-    // Remove monster if killed and award loot/Rich effects
-    if (tile.monsterData.hp <= 0) {
-      const monsterName = tile.monsterData.name
-      console.log(`${monsterName} is defeated!`)
+    if (defeatResult.defeated) {
+      console.log(`Staff of Fireballs hits ${defeatResult.monsterName} for ${damage} damage! Monster defeated!`)
+      console.log(`Staff defeated ${defeatResult.monsterName}! Gained ${defeatResult.goldGained} gold.`)
       
-      // Award loot bonus for defeating the monster
-      this.state.run.gold += this.state.run.loot
-      
-      // RICH upgrade: add gold items to adjacent tiles when defeating monsters
-      if (this.state.run.upgrades.includes('rich')) {
+      // Handle Rich upgrade trigger
+      if (defeatResult.richUpgradeTriggered) {
         this.applyRichUpgrade(x, y).catch(console.error)
       }
-      
-      console.log(`Staff defeated ${monsterName}! Gained ${this.state.run.loot} gold.`)
-      
-      tile.content = TileContent.Empty
-      tile.monsterData = undefined
+    } else {
+      const monster = tile.monsterData
+      console.log(`Staff of Fireballs hits ${monster?.name} for ${damage} damage! (${monster?.hp} HP remaining)`)
     }
     
     // Consume staff charge or remove if no charges left

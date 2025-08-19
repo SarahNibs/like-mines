@@ -198,6 +198,11 @@ export class ShopManager {
           run.hp = Math.min(run.maxHp, run.hp + 8)
           message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +8 HP (${run.hp}/${run.maxHp})`
           console.log(message)
+        } else if (item.id === 'mana-potion') {
+          // Auto-apply mana potion effect
+          run.mana = Math.min(run.maxMana, run.mana + 3)
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +3 mana (${run.mana}/${run.maxMana})`
+          console.log(message)
         } else if (item.id === 'ward') {
           // Auto-apply ward effect
           if (!run.temporaryBuffs) run.temporaryBuffs = {}

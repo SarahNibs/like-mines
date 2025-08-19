@@ -28,6 +28,13 @@ export const HEALTH_POTION: ItemData = {
   immediate: false
 }
 
+export const MANA_POTION: ItemData = {
+  id: 'mana-potion',
+  name: 'Mana Potion',
+  description: 'Gain 3 mana when used. Auto-applies if inventory is full.',
+  icon: '🧪',
+  immediate: false
+}
 
 
 export const SHOP: ItemData = {
@@ -149,12 +156,12 @@ export const ALL_ITEMS: ItemData[] = [
   // Immediate items
   GOLD_COIN, CHEST, SHOP,
   // Inventory items  
-  CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING, HEALTH_POTION
+  CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING, HEALTH_POTION, MANA_POTION
 ]
 
 // Items available for purchase in shops (excludes shop itself, gold, and negative items like bear traps)
 export const SHOP_ITEMS: ItemData[] = [
-  HEALTH_POTION, CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
+  HEALTH_POTION, MANA_POTION, CRYSTAL_BALL, DETECTOR, TRANSMUTE, WARD, BLAZE, WHISTLE, KEY, PROTECTION, CLUE, STAFF_OF_FIREBALLS, RING_OF_TRUE_SEEING
 ]
 
 // =============================================================================

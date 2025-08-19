@@ -104,6 +104,14 @@ export const MAGNET: UpgradeData = {
   repeatable: false
 }
 
+export const MEDITATION: UpgradeData = {
+  id: 'meditation',
+  name: 'Meditation',
+  description: 'Permanently increases max mana by +2',
+  icon: '🧘',
+  repeatable: true
+}
+
 // Temporary buff display upgrades (not selectable, just for UI display)
 export const WARD_TEMP: UpgradeData = {
   id: 'ward-temp',
@@ -135,7 +143,8 @@ export const ALL_UPGRADES: UpgradeData[] = [
   LEFT_HAND,
   RIGHT_HAND,
   RESTING,
-  MAGNET
+  MAGNET,
+  MEDITATION
 ]
 
 // Comprehensive array including temporary upgrades for display lookup

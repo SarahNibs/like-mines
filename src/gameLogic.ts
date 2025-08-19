@@ -331,18 +331,58 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
   return totalDamageToPlayer
 }
 
-// Handle monster defeat effects (gold gain, Rich upgrade)
-export function handleMonsterDefeat(runState: RunState, tileX: number, tileY: number): { goldGained: number, richTriggered: boolean } {
+// Handle monster defeat effects (gold gain, Rich upgrade, Greed upgrade)
+export function handleMonsterDefeat(runState: RunState, tileX: number, tileY: number): { goldGained: number, richTriggered: boolean, greedTriggered: boolean } {
   // Gain gold based on loot stat
   runState.gold += runState.loot
   
   // Check for Rich upgrade trigger
   const richTriggered = runState.upgrades.includes('rich')
   
+  // Check for Greed upgrade trigger (similar to Rich but spawns different items)
+  const greedTriggered = runState.upgrades.includes('greed')
+  
   return {
     goldGained: runState.loot,
-    richTriggered
+    richTriggered,
+    greedTriggered
   }
+}
+
+// Complete monster defeat handling - damages monster and handles death
+export function defeatMonster(tile: Tile, damage: number, runState: RunState): { 
+  defeated: boolean, 
+  goldGained: number, 
+  richTriggered: boolean,
+  greedTriggered: boolean,
+  monsterName?: string
+} {
+  if (!tile.monsterData) {
+    return { defeated: false, goldGained: 0, richTriggered: false, greedTriggered: false }
+  }
+  
+  // Deal damage to monster
+  const monster = tile.monsterData
+  const originalName = monster.name
+  monster.hp -= damage
+  
+  if (monster.hp <= 0) {
+    // Monster defeated - remove it from tile and handle defeat effects
+    tile.monsterData = undefined
+    tile.content = TileContent.Empty
+    
+    const defeatResult = handleMonsterDefeat(runState, tile.x, tile.y)
+    
+    return {
+      defeated: true,
+      goldGained: defeatResult.goldGained,
+      richTriggered: defeatResult.richTriggered,
+      greedTriggered: defeatResult.greedTriggered,
+      monsterName: originalName
+    }
+  }
+  
+  return { defeated: false, goldGained: 0, richTriggered: false, greedTriggered: false }
 }
 
 // Add item to inventory, returns true if successful, false if full

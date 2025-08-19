@@ -108,6 +108,10 @@ export class UpgradeManager {
       case 'magnet':
         // These are handled at clue generation / board generation / tile reveal time
         break
+      case 'meditation':
+        run.maxMana += 2
+        run.mana += 2 // Also increase current mana
+        break
       default:
         return {
           newRun: currentRun,

@@ -4,7 +4,7 @@
  */
 
 import { GameState, RunState, Board, Tile, getTileAt, TileContent } from './types'
-import { revealTile, checkBoardStatus, fightMonster, applyItemEffect, addItemToInventory } from './gameLogic'
+import { revealTile, checkBoardStatus, fightMonster, applyItemEffect, addItemToInventory, defeatMonster } from './gameLogic'
 
 export interface TurnResult {
   success: boolean
@@ -297,16 +297,18 @@ export class TurnManager {
       console.log('Player died! Game over.')
       result.gameOver = true
     } else {
-      // Apply damage normally and award loot
+      // Apply damage normally
       context.run.hp = newHp
-      context.run.gold += context.run.loot
       
-      // RICH upgrade: trigger on monster defeat
-      if (context.run.upgrades.includes('rich')) {
+      // Use centralized defeat handling for consistent upgrade effects
+      // Monster is always defeated when player survives the fight in standard tile reveals
+      const defeatResult = defeatMonster(context.tile, monster.hp, context.run)
+      
+      if (defeatResult.richUpgradeTriggered) {
         result.richUpgradeTriggered = { x: context.tile.x, y: context.tile.y }
       }
       
-      console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${context.run.loot} gold. HP: ${context.run.hp}/${context.run.maxHp}`)
+      console.log(`Fought ${monster.name}! Took ${damage} damage, gained ${defeatResult.goldGained} gold. HP: ${context.run.hp}/${context.run.maxHp}`)
     }
     
     return result
