@@ -82,24 +82,29 @@ export class UpgradeManager {
       }
     }
     
-    // Apply base upgrade effects
+    // Get complete upgrade effects including character bonuses
+    const upgradeEffects = this.characterManager.getUpgradeEffects(run.character, upgradeId)
+    
+    // Apply all stat bonuses
+    const bonuses = upgradeEffects.statBonuses
+    if (bonuses.attack) run.attack += bonuses.attack
+    if (bonuses.defense) run.defense += bonuses.defense
+    if (bonuses.maxHp) run.maxHp += bonuses.maxHp
+    if (bonuses.loot) run.loot += bonuses.loot
+    if (bonuses.maxInventory) {
+      run.maxInventory += bonuses.maxInventory
+      // Add the actual inventory slots
+      for (let i = 0; i < bonuses.maxInventory; i++) {
+        run.inventory.push(null)
+      }
+    }
+    if (bonuses.maxMana) {
+      run.maxMana += bonuses.maxMana
+      run.mana += bonuses.maxMana // Also increase current mana
+    }
+    
+    // Handle upgrades that don't have direct stat effects
     switch (upgradeId) {
-      case 'attack':
-        run.attack += 2
-        break
-      case 'defense':
-        run.defense += 1
-        break
-      case 'healthy':
-        run.maxHp += 25
-        break
-      case 'income':
-        run.loot += 1
-        break
-      case 'bag':
-        run.maxInventory += 2
-        run.inventory.push(null, null) // Add two more inventory slots
-        break
       // QUICK, RICH, WISDOM, TRADERS, LEFT_HAND, RIGHT_HAND are passive
       case 'quick':
       case 'rich':
@@ -111,38 +116,27 @@ export class UpgradeManager {
       case 'magnet':
         // These are handled at clue generation / board generation / tile reveal time
         break
-      case 'meditation':
-        run.maxMana += 2
-        run.mana += 2 // Also increase current mana
-        break
       default:
-        return {
-          newRun: currentRun,
-          success: false,
-          message: `Unknown upgrade: ${upgradeId}`
+        // If we don't recognize the upgrade and it has no stat bonuses, it's unknown
+        if (Object.keys(bonuses).length === 0) {
+          return {
+            newRun: currentRun,
+            success: false,
+            message: `Unknown upgrade: ${upgradeId}`
+          }
         }
-    }
-    
-    // Apply character-specific bonuses
-    if (characterModification.statBonuses) {
-      const bonuses = characterModification.statBonuses
-      if (bonuses.attack) run.attack += bonuses.attack
-      if (bonuses.defense) run.defense += bonuses.defense
-      if (bonuses.maxHp) run.maxHp += bonuses.maxHp
-      if (bonuses.loot) run.loot += bonuses.loot
-      if (bonuses.maxInventory) {
-        run.maxInventory += bonuses.maxInventory
-        // Add extra inventory slots
-        for (let i = 0; i < bonuses.maxInventory; i++) {
-          run.inventory.push(null)
-        }
-      }
     }
     
     // Build result message
     let message = `Applied ${upgradeId} upgrade`
-    if (characterModification.customMessage) {
-      message += ` - ${characterModification.customMessage}`
+    
+    // Add stat bonus details to message for immediate upgrades
+    if (upgradeId === 'attack' && bonuses.attack) {
+      message += ` (+${bonuses.attack} attack)`
+    } else if (upgradeId === 'defense' && bonuses.defense) {
+      message += ` (+${bonuses.defense} defense)`
+    } else if (upgradeId === 'healthy' && bonuses.maxHp) {
+      message += ` (+${bonuses.maxHp} max HP)`
     }
     
     return {

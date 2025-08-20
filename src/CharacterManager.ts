@@ -197,46 +197,9 @@ export class CharacterManager {
     character: Character,
     upgrade: UpgradeData
   ): string {
-    const modification = this.modifyUpgradeApplication(character, upgrade.id, {} as RunState)
-    
-    if (modification.blocked) {
-      return `${upgrade.description} (Blocked for ${character.name})`
-    }
-
-    // Special case for Cleric Resting upgrade: show "+3 HP" instead of "+2 HP"
-    if (character.id === 'cleric' && upgrade.id === 'resting') {
-      return 'Gain +3 HP when revealing neutral tiles'
-    }
-
-    // Special case for Fighter attack/defense upgrades: show total with bonus
-    if (character.id === 'fighter' && upgrade.id === 'attack') {
-      return 'Permanently add +3 to your attack (Fighter +1 bonus)'
-    }
-    if (character.id === 'fighter' && upgrade.id === 'defense') {
-      return 'Permanently add +2 to your defense (Fighter +1 bonus)'
-    }
-
-    if (modification.statBonuses) {
-      const bonuses = []
-      if (modification.statBonuses.attack) {
-        bonuses.push(`+${modification.statBonuses.attack} extra attack`)
-      }
-      if (modification.statBonuses.defense) {
-        bonuses.push(`+${modification.statBonuses.defense} extra defense`)
-      }
-      if (modification.statBonuses.maxHp) {
-        bonuses.push(`+${modification.statBonuses.maxHp} extra HP`)
-      }
-      if (modification.statBonuses.loot) {
-        bonuses.push(`+${modification.statBonuses.loot} extra loot`)
-      }
-      
-      if (bonuses.length > 0) {
-        return `${upgrade.description} (${character.name} bonus: ${bonuses.join(', ')})`
-      }
-    }
-
-    return upgrade.description
+    // Use the centralized upgrade effects system
+    const upgradeEffects = this.getUpgradeEffects(character, upgrade.id)
+    return upgradeEffects.description
   }
 
   /**
@@ -246,6 +209,110 @@ export class CharacterManager {
     this.characterBehaviors.set(characterId, behavior)
   }
   
+  /**
+   * Get complete upgrade effects including base effects and character bonuses
+   */
+  getUpgradeEffects(
+    character: Character | null,
+    upgradeId: string
+  ): {
+    statBonuses: { [stat: string]: number },
+    description: string
+  } {
+    // Base upgrade effects
+    const baseEffects: { [upgradeId: string]: { [stat: string]: number } } = {
+      'attack': { attack: 2 },
+      'defense': { defense: 1 },
+      'healthy': { maxHp: 25 },
+      'income': { loot: 1 },
+      'bag': { maxInventory: 2 },
+      'meditation': { maxMana: 2 }
+    }
+
+    // Start with base effects
+    const effects = { ...baseEffects[upgradeId] || {} }
+    
+    // Add character-specific bonuses
+    if (character) {
+      const modification = this.modifyUpgradeApplication(character, upgradeId, {} as any)
+      if (modification.statBonuses) {
+        Object.keys(modification.statBonuses).forEach(stat => {
+          effects[stat] = (effects[stat] || 0) + modification.statBonuses![stat]!
+        })
+      }
+    }
+
+    // Generate description based on total effects
+    let description = ''
+    switch (upgradeId) {
+      case 'attack':
+        const totalAttack = effects.attack || 2
+        const attackBonus = character?.id === 'fighter' ? ' (Fighter +1 bonus)' : ''
+        description = `Permanently add +${totalAttack} to your attack${attackBonus}`
+        break
+      case 'defense':
+        const totalDefense = effects.defense || 1
+        const defenseBonus = character?.id === 'fighter' ? ' (Fighter +1 bonus)' : ''
+        description = `Permanently add +${totalDefense} to your defense${defenseBonus}`
+        break
+      case 'healthy':
+        const totalHp = effects.maxHp || 25
+        description = `Permanently add +${totalHp} to your max HP`
+        break
+      case 'income':
+        description = 'Permanently add +$1 to gold gained from opponent tiles and monsters'
+        break
+      case 'bag':
+        description = 'Permanently add +2 inventory slots'
+        break
+      case 'quick':
+        description = 'At the beginning of every board, reveal one of your tiles at random'
+        break
+      case 'rich':
+        description = 'Spread coins to adjacent tiles when you defeat a monster'
+        break
+      case 'resting':
+        const restingAmount = character?.id === 'cleric' ? 3 : 2
+        description = `Restore ${restingAmount} HP when revealing neutral tiles`
+        break
+      case 'meditation':
+        description = 'Permanently add +2 max mana and +2 current mana'
+        break
+      default:
+        // For unknown upgrades, check if we have character modifications
+        if (character) {
+          const modification = this.modifyUpgradeApplication(character, upgradeId, {} as RunState)
+          
+          // If blocked, show block message
+          if (modification.blocked) {
+            description = `Blocked for ${character.name}`
+          } else if (modification.statBonuses && Object.keys(modification.statBonuses).length > 0) {
+            // If has stat bonuses, show them
+            const bonuses = []
+            if (modification.statBonuses.attack) {
+              bonuses.push(`+${modification.statBonuses.attack} attack`)
+            }
+            if (modification.statBonuses.defense) {
+              bonuses.push(`+${modification.statBonuses.defense} defense`)
+            }
+            if (modification.statBonuses.maxHp) {
+              bonuses.push(`+${modification.statBonuses.maxHp} HP`)
+            }
+            description = `Character bonus: ${bonuses.join(', ')}`
+          } else {
+            description = 'Unknown upgrade'
+          }
+        } else {
+          description = 'Unknown upgrade'
+        }
+    }
+
+    return {
+      statBonuses: effects,
+      description
+    }
+  }
+
   /**
    * Get access to the trait manager for other systems
    */

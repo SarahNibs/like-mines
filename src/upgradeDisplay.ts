@@ -3,6 +3,7 @@
  */
 
 import { ALL_UPGRADES_LOOKUP } from './upgrades'
+import { CharacterManager } from './CharacterManager'
 
 // Cache for upgrade state to prevent unnecessary updates
 let lastUpgradeState: string[] = []
@@ -27,12 +28,22 @@ export function updateUpgrades(state: any, upgradesEl: HTMLElement) {
   upgradesEl.innerHTML = ''
   
   // Create upgrade icons synchronously - smaller and more compact for Run Progress box
+  const characterManager = new CharacterManager()
+  
   currentUpgrades.forEach((upgradeId: string) => {
     const upgrade = ALL_UPGRADES_LOOKUP.find((u: any) => u.id === upgradeId)
     if (upgrade) {
       const icon = document.createElement('span')
       icon.textContent = upgrade.icon
-      icon.title = `${upgrade.name}: ${upgrade.description}`
+      
+      // Get character-specific description if character exists
+      let description = upgrade.description
+      if (state.run.character) {
+        const upgradeEffects = characterManager.getUpgradeEffects(state.run.character, upgradeId)
+        description = upgradeEffects.description
+      }
+      
+      icon.title = `${upgrade.name}: ${description}`
       icon.style.fontSize = '16px'
       icon.style.padding = '2px'
       icon.style.margin = '1px'

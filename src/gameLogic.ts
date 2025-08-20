@@ -5,6 +5,7 @@ import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
 import { ALL_CHARACTERS, Character } from './characters'
 import { ALL_SPELLS } from './SpellManager'
 import { CharacterTraitManager } from './CharacterTraits'
+import { UpgradeManager } from './UpgradeManager'
 
 // Get adjacent tile positions (8-directional)
 function getAdjacentPositions(x: number, y: number): Array<{x: number, y: number}> {
@@ -122,43 +123,20 @@ export function createCharacterRunState(characterId: string): RunState {
     // Note: Spells are displayed separately from regular inventory in UI
   }
   
-  // Apply character-specific upgrades and their effects
-  runState.upgrades = [...character.startingUpgrades]
+  // Apply character-specific upgrades and their effects using centralized system
+  // Start with empty upgrades array - UpgradeManager will add them
+  const upgradeManager = new UpgradeManager()
   
-  // Apply upgrade effects to stats
+  // Apply each starting upgrade using the centralized system
   character.startingUpgrades.forEach(upgradeId => {
-    switch (upgradeId) {
-      case 'attack':
-        runState.attack += 2
-        break
-      case 'defense':
-        runState.defense += 1
-        break
-      case 'healthy':
-        runState.maxHp += 25
-        runState.hp += 25 // Also increase current HP
-        break
-      case 'income':
-        runState.loot += 1
-        break
-      case 'bag':
-        runState.maxInventory += 2
-        runState.inventory.push(null, null) // Add two more inventory slots
-        break
-      // QUICK, RICH, WISDOM, TRADERS, LEFT_HAND, RIGHT_HAND, RESTING are passive
-      case 'quick':
-      case 'rich':
-      case 'wisdom':
-      case 'traders':
-      case 'left-hand':
-      case 'right-hand':
-      case 'resting':
-        // These are handled during board generation or other game events
-        break
-      case 'meditation':
-        runState.maxMana += 2
-        runState.mana += 2 // Also increase current mana
-        break
+    const result = upgradeManager.applyUpgrade(runState, upgradeId)
+    if (result.success) {
+      // Update runState with the upgraded values, but preserve character reference
+      const characterRef = runState.character
+      Object.assign(runState, result.newRun)
+      runState.character = characterRef
+    } else {
+      console.warn(`Failed to apply starting upgrade ${upgradeId}: ${result.message}`)
     }
   })
   
@@ -299,16 +277,9 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
   let rounds = 0
   const maxRounds = 1000 // Safety check to prevent infinite loops
   
-  // Apply temporary buffs
+  // Apply temporary buffs (these already include character trait bonuses when applied)
   let blazeBonus = runState.temporaryBuffs.blaze || 0
   let wardBonus = runState.temporaryBuffs.ward || 0
-  
-  // Apply character trait bonuses to temporary buffs
-  if (runState.character) {
-    const traitManager = new CharacterTraitManager()
-    blazeBonus += traitManager.getItemEffectBonus(runState.character, 'blaze')
-    wardBonus += traitManager.getItemEffectBonus(runState.character, 'ward')
-  }
   
   const effectiveAttack = runState.attack + blazeBonus
   const effectiveDefense = runState.defense + wardBonus

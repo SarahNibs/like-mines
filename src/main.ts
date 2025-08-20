@@ -66,7 +66,14 @@ function updateUI() {
   levelInfoEl.textContent = `Level ${state.run.currentLevel} / ${state.run.maxLevel}`
   // Calculate resting bonus for HP line display
   const restingCount = state.run.upgrades.filter(id => id === 'resting').length
-  const restingBonus = restingCount > 0 ? ` | Resting: +${restingCount * 2}` : ''
+  let restingStatValue = 0
+  if (restingCount > 0) {
+    // For Cleric: Each resting upgrade grants +3 to resting stat
+    // For others: Each resting upgrade grants +2 to resting stat
+    const baseRestingPerUpgrade = state.run.character?.id === 'cleric' ? 3 : 2
+    restingStatValue = restingCount * baseRestingPerUpgrade
+  }
+  const restingBonus = restingStatValue > 0 ? ` | Resting: +${restingStatValue}` : ''
   hpInfoEl.textContent = `HP: ${state.run.hp} / ${state.run.maxHp}${restingBonus}`
   goldInfoEl.textContent = `Gold: ${state.run.gold} | Loot: +${state.run.loot}`
   // Calculate effective stats including temporary buffs

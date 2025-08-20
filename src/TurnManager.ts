@@ -165,21 +165,17 @@ export class TurnManager {
     if (context.tile.owner === 'neutral') {
       const restingCount = context.run.upgrades.filter(id => id === 'resting').length
       if (restingCount > 0) {
-        let baseHealPerResting = 2
+        // For Cleric: Each resting upgrade grants +3 HP per neutral tile revealed
+        // For others: Each resting upgrade grants +2 HP per neutral tile revealed
+        // Plus: Total healing = (total Resting upgrades + 1) formula per user request
         
-        // Cleric gets +3 base heal per resting instead of +2
+        let baseHealPerResting = 2
         if (context.run.character?.id === 'cleric') {
           baseHealPerResting = 3
         }
         
-        let healAmount = restingCount * baseHealPerResting
-        
-        // Apply Cleric trait bonus for resting triggers (+1 more per trigger)
-        if (context.run.character) {
-          const traitManager = new CharacterTraitManager()
-          const bonus = traitManager.getHpGainBonus(context.run.character, 'restingTrigger')
-          healAmount += restingCount * bonus // +1 per resting upgrade for Cleric
-        }
+        // Apply the "total Resting upgrades + 1" formula
+        let healAmount = (restingCount * baseHealPerResting) + 1
         
         context.run.hp = Math.min(context.run.maxHp, context.run.hp + healAmount)
         console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)

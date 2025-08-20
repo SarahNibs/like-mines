@@ -524,8 +524,8 @@ describe('TurnManager', () => {
       
       // Cleric should heal more than Fighter
       expect(clericHpAfterResting).toBeGreaterThan(fighterHpAfterResting)
-      expect(fighterHpAfterResting).toBe(7) // 5 + 2 = 7 (Fighter gets 2 per resting)
-      expect(clericHpAfterResting).toBe(9) // 5 + 4 = 9 (Cleric gets 3 + 1 bonus = 4 per resting)
+      expect(fighterHpAfterResting).toBe(8) // 5 + 3 = 8 (Fighter: 1 resting * 2 + 1 = 3 HP)
+      expect(clericHpAfterResting).toBe(9) // 5 + 4 = 9 (Cleric: 1 resting * 3 + 1 = 4 HP)
     })
   })
 })

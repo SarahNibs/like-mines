@@ -322,7 +322,7 @@ describe('UpgradeManager', () => {
 
       expect(result.success).toBe(true)
       expect(result.newRun.attack).toBe(8) // 5 + 2 (base) + 1 (fighter bonus)
-      expect(result.message).toContain('Fighter bonus: +1 additional attack!')
+      expect(result.message).toContain('Applied attack upgrade (+3 attack)')
     })
 
     it('should apply fighter bonus to defense upgrades', () => {
@@ -335,7 +335,7 @@ describe('UpgradeManager', () => {
 
       expect(result.success).toBe(true)
       expect(result.newRun.defense).toBe(4) // 2 + 1 (base) + 1 (fighter bonus)
-      expect(result.message).toContain('Fighter bonus: +1 additional defense!')
+      expect(result.message).toContain('Applied defense upgrade (+2 defense)')
     })
 
     it('should not apply fighter bonuses to other upgrades', () => {
@@ -356,7 +356,7 @@ describe('UpgradeManager', () => {
 
       expect(result.success).toBe(true)
       expect(result.newRun.attack).toBe(7) // 5 + 2 (base only)
-      expect(result.message).toBe('Applied attack upgrade')
+      expect(result.message).toBe('Applied attack upgrade (+2 attack)')
     })
 
     it('should provide access to character manager', () => {

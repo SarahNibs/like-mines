@@ -146,8 +146,8 @@ describe('CharacterManager', () => {
 
       const description = manager.getCharacterUpgradeDescription(fighter, attackUpgrade)
       
-      expect(description).toContain('Permanently add +2 to your attack')
-      expect(description).toContain('FIGHTER bonus: +1 extra attack')
+      expect(description).toContain('Permanently add +3 to your attack')
+      expect(description).toContain('Fighter +1 bonus')
     })
 
     it('should return normal description for characters without bonuses', () => {
@@ -201,11 +201,10 @@ describe('CharacterManager', () => {
 
       const description = manager.getCharacterUpgradeDescription(testCharacter, testUpgrade)
       
-      expect(description).toContain('Base description')
-      expect(description).toContain('TEST bonus:')
-      expect(description).toContain('+2 extra attack')
-      expect(description).toContain('+1 extra defense')
-      expect(description).toContain('+10 extra HP')
+      expect(description).toContain('Character bonus:')
+      expect(description).toContain('+2 attack')
+      expect(description).toContain('+1 defense')
+      expect(description).toContain('+10 HP')
     })
   })
 
