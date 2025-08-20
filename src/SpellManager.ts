@@ -44,11 +44,31 @@ export const GLIMPSE: SpellData = {
   targetType: 'none'
 }
 
+export const UNLOCK: SpellData = {
+  id: 'unlock',
+  name: 'Unlock',
+  description: 'Unlocks a random locked door',
+  icon: '🗝️',
+  manaCost: 1,
+  targetType: 'none'
+}
+
+export const WINDSTORM: SpellData = {
+  id: 'windstorm',
+  name: 'Windstorm',
+  description: 'Shuffles all items and fog on the board',
+  icon: '🌪️',
+  manaCost: 4,
+  targetType: 'none'
+}
+
 export const ALL_SPELLS: SpellData[] = [
   MAGIC_MISSILE,
   MAGE_HAND,
   STINKING_CLOUD,
-  GLIMPSE
+  GLIMPSE,
+  UNLOCK,
+  WINDSTORM
 ]
 
 export interface SpellCastResult {
@@ -117,6 +137,18 @@ export class SpellManager {
         }
         return this.castGlimpse(run, gameState)
         
+      case 'unlock':
+        if (!gameState) {
+          return { success: false, message: 'Unlock spell requires game state' }
+        }
+        return this.castUnlock(run, gameState)
+        
+      case 'windstorm':
+        if (!gameState) {
+          return { success: false, message: 'Windstorm spell requires game state' }
+        }
+        return this.castWindstorm(run, gameState)
+        
       case 'magic-missile':
         if (targetX === undefined || targetY === undefined) {
           return { success: false, requiresTargeting: true }
@@ -164,6 +196,143 @@ export class SpellManager {
       success: true,
       message: 'Cast Glimpse - new magical insight revealed!',
       newClue: fixedClue
+    }
+  }
+  
+  /**
+   * Cast Unlock spell - unlocks a random locked door
+   */
+  private castUnlock(run: RunState, gameState: GameState): SpellCastResult {
+    // Find all locked doors (tiles with chainData.isBlocked = true and requiredTile not revealed)
+    const lockedDoors = []
+    
+    for (let y = 0; y < gameState.board.height; y++) {
+      for (let x = 0; x < gameState.board.width; x++) {
+        const tile = gameState.board.tiles[y][x]
+        
+        if (tile.chainData && tile.chainData.isBlocked && !tile.revealed) {
+          // Check if the required tile is not revealed (door is still locked)
+          const requiredTile = gameState.board.tiles[tile.chainData.requiredTileY][tile.chainData.requiredTileX]
+          if (!requiredTile.revealed) {
+            lockedDoors.push({ x, y, tile, requiredTile })
+          }
+        }
+      }
+    }
+    
+    if (lockedDoors.length === 0) {
+      return {
+        success: false,
+        message: 'Unlock spell failed - no locked doors found!'
+      }
+    }
+    
+    // Pick a random locked door
+    const randomDoor = lockedDoors[Math.floor(Math.random() * lockedDoors.length)]
+    
+    // Unlock the door by removing the chain relationship completely (like Key item)
+    // Remove chain data from both the door tile and the key tile
+    randomDoor.tile.chainData = undefined
+    if (randomDoor.requiredTile.chainData) {
+      randomDoor.requiredTile.chainData = undefined
+    }
+    
+    return {
+      success: true,
+      message: `Unlock spell removed the chain between (${randomDoor.x}, ${randomDoor.y}) and (${randomDoor.requiredTile.x}, ${randomDoor.requiredTile.y})!`
+    }
+  }
+  
+  /**
+   * Cast Windstorm spell - shuffles all items and fog on the board
+   */
+  private castWindstorm(run: RunState, gameState: GameState): SpellCastResult {
+    // Collect all items and fogged tiles from the board
+    const items: Array<{ item: any, positions: Array<{ x: number, y: number }> }> = []
+    const foggedPositions: Array<{ x: number, y: number }> = []
+    
+    // First pass: collect all items and fogged positions
+    for (let y = 0; y < gameState.board.height; y++) {
+      for (let x = 0; x < gameState.board.width; x++) {
+        const tile = gameState.board.tiles[y][x]
+        
+        // Collect items (but not monsters or upgrades)
+        if (tile.content === 'item' && tile.itemData && !tile.revealed) {
+          let existingItem = items.find(i => i.item.id === tile.itemData!.id)
+          if (existingItem) {
+            existingItem.positions.push({ x, y })
+          } else {
+            items.push({ item: tile.itemData, positions: [{ x, y }] })
+          }
+        }
+        
+        // Collect fogged positions
+        if (tile.fogged && !tile.revealed) {
+          foggedPositions.push({ x, y })
+        }
+      }
+    }
+    
+    // Second pass: clear items and fog from their current positions
+    for (let y = 0; y < gameState.board.height; y++) {
+      for (let x = 0; x < gameState.board.width; x++) {
+        const tile = gameState.board.tiles[y][x]
+        
+        // Clear items
+        if (tile.content === 'item' && tile.itemData && !tile.revealed) {
+          tile.content = 'empty'
+          tile.itemData = undefined
+        }
+        
+        // Clear fog
+        if (tile.fogged && !tile.revealed) {
+          tile.fogged = false
+        }
+      }
+    }
+    
+    // Collect all empty, unrevealed tile positions for reshuffling
+    const emptyPositions: Array<{ x: number, y: number }> = []
+    for (let y = 0; y < gameState.board.height; y++) {
+      for (let x = 0; x < gameState.board.width; x++) {
+        const tile = gameState.board.tiles[y][x]
+        if (tile.content === 'empty' && !tile.revealed) {
+          emptyPositions.push({ x, y })
+        }
+      }
+    }
+    
+    // Shuffle the empty positions array
+    for (let i = emptyPositions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [emptyPositions[i], emptyPositions[j]] = [emptyPositions[j], emptyPositions[i]]
+    }
+    
+    let positionIndex = 0
+    
+    // Place items back at random positions
+    for (const itemGroup of items) {
+      for (let i = 0; i < itemGroup.positions.length && positionIndex < emptyPositions.length; i++) {
+        const newPos = emptyPositions[positionIndex++]
+        const tile = gameState.board.tiles[newPos.y][newPos.x]
+        tile.content = 'item'
+        tile.itemData = itemGroup.item
+      }
+    }
+    
+    // Place fog back at random positions
+    for (let i = 0; i < foggedPositions.length && positionIndex < emptyPositions.length; i++) {
+      const newPos = emptyPositions[positionIndex++]
+      const tile = gameState.board.tiles[newPos.y][newPos.x]
+      tile.fogged = true
+    }
+    
+    const itemsShuffled = items.reduce((sum, group) => sum + group.positions.length, 0)
+    const fogShuffled = foggedPositions.length
+    
+    return {
+      success: true,
+      message: `Windstorm shuffled ${itemsShuffled} items and ${fogShuffled} fog clouds!`
     }
   }
   
@@ -306,27 +475,54 @@ export class SpellManager {
     // Find first empty slot
     for (let i = 0; i < run.inventory.length; i++) {
       if (run.inventory[i] === null) {
-        run.inventory[i] = item
+        // Create a deep copy of the item to prevent object sharing
+        run.inventory[i] = this.createItemCopy(item)
         return true
       }
     }
     return false
+  }
+
+  // Create a deep copy of an item to prevent object sharing
+  private createItemCopy(item: any): any {
+    const copy = { ...item }
+    
+    // Deep copy multiUse object if it exists
+    if (item.multiUse) {
+      copy.multiUse = { ...item.multiUse }
+    }
+    
+    return copy
   }
   
   /**
    * Cast Stinking Cloud - create persistent damage effect
    */
   private castStinkingCloud(run: RunState, board: Board, targetX: number, targetY: number): SpellCastResult {
+    // Check if there's already a Stinking Cloud effect at this location
+    if (!run.spellEffects) {
+      run.spellEffects = []
+    }
+    
+    const existingEffect = run.spellEffects.find(effect => 
+      effect.spellId === 'stinking-cloud' && 
+      effect.tileX === targetX && 
+      effect.tileY === targetY
+    )
+    
+    if (existingEffect) {
+      return {
+        success: false,
+        message: `There is already a Stinking Cloud at (${targetX}, ${targetY})!`
+      }
+    }
+    
     const effect: SpellEffect = {
       spellId: 'stinking-cloud',
       remainingTurns: -1, // Permanent until manually removed
       tileX: targetX,
       tileY: targetY,
       damage: 2
-    }
-    
-    if (!run.spellEffects) {
-      run.spellEffects = []
     }
     
     run.spellEffects.push(effect)
@@ -364,6 +560,10 @@ export class SpellManager {
     if (!run.spellEffects || run.spellEffects.length === 0) {
       return { messages, richUpgradeTriggers }
     }
+    
+    // Debug: Log active spell effects
+    console.log(`Processing ${run.spellEffects.length} spell effects:`, 
+      run.spellEffects.map(e => `${e.spellId} at (${e.tileX}, ${e.tileY})`))
     
     // Process each active spell effect
     for (const effect of run.spellEffects) {
@@ -455,9 +655,17 @@ export class SpellManager {
   
   /**
    * Get a random spell for character creation
+   * @param characterId Optional character ID to filter appropriate spells
    */
-  getRandomSpell(): SpellData {
-    return ALL_SPELLS[Math.floor(Math.random() * ALL_SPELLS.length)]
+  getRandomSpell(characterId?: string): SpellData {
+    let availableSpells = ALL_SPELLS
+    
+    // Windstorm should only be given as starting spell to Wizard
+    if (characterId !== 'wizard') {
+      availableSpells = ALL_SPELLS.filter(spell => spell.id !== 'windstorm')
+    }
+    
+    return availableSpells[Math.floor(Math.random() * availableSpells.length)]
   }
   
   /**

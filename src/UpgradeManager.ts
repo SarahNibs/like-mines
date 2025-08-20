@@ -6,6 +6,7 @@
 
 import { RunState, Board, TileContent, getTileAt } from './types'
 import { CharacterManager } from './CharacterManager'
+import { ALL_SPELLS } from './SpellManager'
 
 export interface UpgradeChoice {
   choices: Array<{ id: string, name: string, description: string, blocked?: boolean, blockReason?: string }>
@@ -115,6 +116,12 @@ export class UpgradeManager {
       case 'resting':
       case 'magnet':
         // These are handled at clue generation / board generation / tile reveal time
+        break
+      case 'spellbook':
+        // Grant a random spell - need to import SpellManager for this
+        return this.applySpellbookUpgrade(run)
+      case 'wellspring':
+        // Wellspring upgrade - passive effect on level progression
         break
       default:
         // If we don't recognize the upgrade and it has no stat bonuses, it's unknown
@@ -472,5 +479,46 @@ export class UpgradeManager {
    */
   getCharacterManager(): CharacterManager {
     return this.characterManager
+  }
+
+  /**
+   * Apply Spellbook upgrade - grants a random spell the player doesn't have
+   * @param run Current run state
+   * @returns Upgrade result with spell granted
+   */
+  private applySpellbookUpgrade(run: RunState): UpgradeResult {
+    // Check if character can cast spells
+    if (run.character && !this.characterManager.getTraitManager().canCharacterCastSpells(run.character)) {
+      return {
+        newRun: run,
+        success: false,
+        message: `${run.character.name} cannot use Spellbook - unable to cast spells`
+      }
+    }
+
+    // Get spells the player doesn't already have
+    const availableSpells = ALL_SPELLS.filter(spell => 
+      !run.spells.some(ownedSpell => ownedSpell.id === spell.id)
+    )
+
+    if (availableSpells.length === 0) {
+      return {
+        newRun: run,
+        success: false,
+        message: 'Spellbook upgrade failed - you already know all spells!'
+      }
+    }
+
+    // Pick a random spell
+    const randomSpell = availableSpells[Math.floor(Math.random() * availableSpells.length)]
+    
+    // Add the spell to the player's spells
+    run.spells = [...run.spells, randomSpell]
+    
+    return {
+      newRun: run,
+      success: true,
+      message: `Spellbook granted you the spell: ${randomSpell.name}!`
+    }
   }
 }

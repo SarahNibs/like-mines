@@ -36,9 +36,9 @@ export const WIZARD: Character = {
   id: 'wizard',
   name: 'WIZARD',
   icon: '🧙',
-  description: 'Wisdom upgrade, Staff of Fireballs, and 3 Transmutes (no Protection). 4/4 mana, +1 spell damage, new spells at levels 6/11/16. Cannot take Defense.',
-  startingUpgrades: ['wisdom'],
-  startingItems: [STAFF_OF_FIREBALLS, TRANSMUTE, TRANSMUTE, TRANSMUTE], // Staff + 3 transmutes, no protection
+  description: 'Wisdom and Wellspring upgrades, Staff of Fireballs, and 1 Transmute (no Protection). 4/4 mana, +1 spell damage, new spells at levels 6/11/16. Cannot take Defense.',
+  startingUpgrades: ['wisdom', 'wellspring'],
+  startingItems: [STAFF_OF_FIREBALLS, TRANSMUTE], // Staff + 1 transmute, no protection
   startingMana: 4 // 4/4 mana
 }
 

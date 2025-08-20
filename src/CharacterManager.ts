@@ -278,6 +278,27 @@ export class CharacterManager {
       case 'meditation':
         description = 'Permanently add +2 max mana and +2 current mana'
         break
+      case 'wisdom':
+        description = 'At the beginning of every board, apply detector scan to one random tile'
+        break
+      case 'traders':
+        description = 'Shops have one additional item and one additional upgrade available for purchase'
+        break
+      case 'left-hand':
+        description = 'Adds one more of your tiles to the left hand of all future clues'
+        break
+      case 'right-hand':
+        description = 'Adds one more of your tiles to the right hand of all future clues'
+        break
+      case 'magnet':
+        description = 'When you reveal a tile, collect any adjacent coins'
+        break
+      case 'spellbook':
+        description = 'Grants you one random spell you don\'t already have'
+        break
+      case 'wellspring':
+        description = 'Increases the amount of mana you gain per level by 1'
+        break
       default:
         // For unknown upgrades, check if we have character modifications
         if (character) {

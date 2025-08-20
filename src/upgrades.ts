@@ -112,6 +112,22 @@ export const MEDITATION: UpgradeData = {
   repeatable: true
 }
 
+export const SPELLBOOK: UpgradeData = {
+  id: 'spellbook',
+  name: 'Spellbook',
+  description: 'Grants you one random spell you don\'t already have',
+  icon: '📖',
+  repeatable: false
+}
+
+export const WELLSPRING: UpgradeData = {
+  id: 'wellspring',
+  name: 'Wellspring',
+  description: 'Increases the amount of mana you gain per level by 1',
+  icon: '🌊',
+  repeatable: false
+}
+
 // Temporary buff display upgrades (not selectable, just for UI display)
 export const WARD_TEMP: UpgradeData = {
   id: 'ward-temp',
@@ -144,7 +160,9 @@ export const ALL_UPGRADES: UpgradeData[] = [
   RIGHT_HAND,
   RESTING,
   MAGNET,
-  MEDITATION
+  MEDITATION,
+  SPELLBOOK,
+  WELLSPRING
 ]
 
 // Comprehensive array including temporary upgrades for display lookup

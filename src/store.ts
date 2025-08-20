@@ -110,6 +110,9 @@ class GameStore {
     
     // Award trophies and get updated run state BEFORE setting state
     let finalRunState = result.newRun ? { ...result.newRun } : { ...this.state.run }
+    
+    // If trophy was stolen, use current state's trophies (which were updated by stealGoldTrophy)
+    finalRunState.trophies = this.state.run.trophies
     if (result.newBoardStatus === 'won') {
       const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
       const opponentTilesRevealed = this.state.board.opponentTilesRevealed
@@ -700,6 +703,9 @@ class GameStore {
     
     // Award trophies and get updated run state BEFORE setting state
     let finalRunState = result.newRun ? { ...result.newRun } : { ...this.state.run }
+    
+    // If trophy was stolen, use current state's trophies (which were updated by stealGoldTrophy)
+    finalRunState.trophies = this.state.run.trophies
     if (result.newBoardStatus === 'won') {
       const opponentTilesLeft = this.state.board.opponentTilesTotal - this.state.board.opponentTilesRevealed
       const opponentTilesRevealed = this.state.board.opponentTilesRevealed
@@ -982,7 +988,7 @@ class GameStore {
       console.log(`Staff defeated ${defeatResult.monsterName}! Gained ${defeatResult.goldGained} gold.`)
       
       // Handle Rich upgrade trigger
-      if (defeatResult.richUpgradeTriggered) {
+      if (defeatResult.richTriggered) {
         this.applyRichUpgrade(x, y).catch(console.error)
       }
     } else {
@@ -990,19 +996,13 @@ class GameStore {
       console.log(`Staff of Fireballs hits ${monster?.name} for ${damage} damage! (${monster?.hp} HP remaining)`)
     }
     
-    // Consume staff charge or remove if no charges left
+    // Consume staff charge using InventoryManager to avoid object mutation
     const itemIndex = (this.state as any).staffItemIndex
-    const staff = this.state.run.inventory[itemIndex]
+    const staffResult = this.inventoryManager.useStaffAt(this.state.run, itemIndex, { x, y }, damage)
     
-    if (staff && staff.multiUse) {
-      staff.multiUse.currentUses -= 1
-      console.log(`Staff of Fireballs: ${staff.multiUse.currentUses}/${staff.multiUse.maxUses} uses remaining`)
-      
-      // Remove staff if no charges left
-      if (staff.multiUse.currentUses <= 0) {
-        removeItemFromInventory(this.state.run, itemIndex)
-        console.log('Staff of Fireballs is depleted and removed from inventory')
-      }
+    if (staffResult.success && staffResult.newRun) {
+      // Update the run state with properly managed inventory
+      this.setState({ run: staffResult.newRun })
     }
     
     // Exit staff mode
@@ -1410,7 +1410,15 @@ class GameStore {
         console.log(`Starting items:`, characterRun.inventory.filter(item => item !== null))
         console.log(`Board generated with character upgrades applied`)
         
+        // Set state first
         this.setState(gameState)
+        
+        // Check if character is Tourist and should auto-open shop on level 1
+        if (characterRun.character && this.characterManager.shouldForceShopOnEveryLevel(characterRun.character)) {
+          console.log('Tourist character: Auto-opening shop for level 1')
+          // Open shop immediately for Tourist on level 1
+          this.openShop()
+        }
         
         // Force immediate UI update to show clues with character bonuses
         this.notify()

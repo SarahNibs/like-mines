@@ -30,6 +30,48 @@ export function updateUpgrades(state: any, upgradesEl: HTMLElement) {
   // Create upgrade icons synchronously - smaller and more compact for Run Progress box
   const characterManager = new CharacterManager()
   
+  // Add character icon first if character exists
+  if (state.run.character) {
+    const characterIcon = document.createElement('span')
+    characterIcon.textContent = state.run.character.icon
+    
+    // Create character trait description (ongoing changes, not starting equipment)
+    let traitDescription = ''
+    switch (state.run.character.id) {
+      case 'fighter':
+        traitDescription = 'All attack and defense increases get +1; cannot cast spells'
+        break
+      case 'cleric':
+        traitDescription = 'HP bonuses from all sources +1; cannot pick Rich, Income only once'
+        break
+      case 'wizard':
+        traitDescription = '+1 spell damage, new spells at levels 6/11/16; cannot take Defense'
+        break
+      case 'ranger':
+        traitDescription = 'Attacks first in combat, takes no damage if attack defeats monster'
+        break
+      case 'tourist':
+        traitDescription = 'Shop appears every level but items cost +2/+3/+4/+5 gold; cannot use Transmute (auto-discarded)'
+        break
+      case 'below':
+        traitDescription = 'Can pick unlimited clue enhancers (Left Hand/Right Hand); cannot use Wands of Transmute'
+        break
+      default:
+        traitDescription = state.run.character.description
+    }
+    
+    characterIcon.title = `${state.run.character.name}: ${traitDescription}`
+    characterIcon.style.fontSize = '16px'
+    characterIcon.style.padding = '2px'
+    characterIcon.style.margin = '1px'
+    characterIcon.style.cursor = 'default'
+    characterIcon.style.border = '2px solid #ffa500' // Orange border to distinguish from upgrades
+    characterIcon.style.borderRadius = '3px'
+    characterIcon.style.backgroundColor = 'rgba(255, 165, 0, 0.1)' // Light orange background
+    
+    upgradesEl.appendChild(characterIcon)
+  }
+  
   currentUpgrades.forEach((upgradeId: string) => {
     const upgrade = ALL_UPGRADES_LOOKUP.find((u: any) => u.id === upgradeId)
     if (upgrade) {
@@ -105,8 +147,8 @@ export function updateUpgradeChoiceWidget(
           button.style.display = 'flex'
           button.style.opacity = '1'
           button.style.cursor = 'pointer'
-          button.style.backgroundColor = ''
-          button.style.color = ''
+          button.style.backgroundColor = '#444' // Dark background like the rest of the UI
+          button.style.color = '#fff' // White text for contrast
           button.disabled = false
           button.style.textDecoration = 'none'
         }

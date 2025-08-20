@@ -4,7 +4,13 @@
 
 // Update trophies display
 export function updateTrophies(state: any, trophiesContainer: HTMLElement) {
-  console.log('Updating trophies display. Trophy count:', state.run.trophies.length)
+  const stolenCount = state.run.trophies.filter((t: any) => t.stolen).length
+  console.log('Updating trophies display. Trophy count:', state.run.trophies.length, 'Stolen:', stolenCount)
+  
+  if (stolenCount > 0) {
+    console.log('Stolen trophies:', state.run.trophies.filter((t: any) => t.stolen))
+  }
+  
   trophiesContainer.innerHTML = ''
   
   // Sort trophies: gold first, then stolen gold, then silver

@@ -548,17 +548,25 @@ function spawnRingOfTrueSeeing(tiles: Tile[][], width: number, height: number, r
   }
 }
 
-// Apply fog effect to random tiles (4-8% coverage starting level 8)
-function applyFogEffect(tiles: Tile[][], width: number, height: number, rng: ROT.RNG): void {
-  const totalTiles = width * height
-  const minFogPercent = 0.04 // 4%
-  const maxFogPercent = 0.08 // 8%
+// Apply fog effect to random tiles with level-scaled counts
+function applyFogEffect(tiles: Tile[][], width: number, height: number, rng: ROT.RNG, level: number): void {
+  let fogCount: number
   
-  // Random percentage between 4% and 8%
-  const fogPercent = minFogPercent + rng.getUniform() * (maxFogPercent - minFogPercent)
-  const fogCount = Math.floor(totalTiles * fogPercent)
+  // Level-based fog scaling: 3x on 12, 4x on 16, 5x on 18, 6x on 20
+  if (level >= 20) {
+    fogCount = 6
+  } else if (level >= 18) {
+    fogCount = 5
+  } else if (level >= 16) {
+    fogCount = 4
+  } else if (level >= 12) {
+    fogCount = 3
+  } else {
+    // Levels 8-11: Use 2 fogged tiles (same as before)
+    fogCount = 2
+  }
   
-  console.log(`Applying fog to ${fogCount} tiles (${(fogPercent * 100).toFixed(1)}% of ${totalTiles} tiles)`)
+  console.log(`Applying fog to ${fogCount} tiles on level ${level}`)
   
   // Get all tiles that can be fogged (any tile)
   const availableTiles = []
@@ -704,7 +712,7 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
   
   // Apply fog effect starting from level 8
   if (actualLevel >= 8) {
-    applyFogEffect(tiles, width, height, rng)
+    applyFogEffect(tiles, width, height, rng, actualLevel)
   }
   
   return {

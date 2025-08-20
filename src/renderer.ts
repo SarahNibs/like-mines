@@ -279,6 +279,19 @@ export class GameRenderer {
         this.ctx.fill()
       })
       
+      // Draw highlights on top of fog (for clue tile hover effects)
+      if (isHighlighted) {
+        const opacity = this.dimmedHighlights ? 0.1 : 0.2
+        this.ctx.fillStyle = `rgba(255, 165, 0, ${opacity})`
+        this.ctx.fillRect(x, y, this.tileSize, this.tileSize)
+      }
+      
+      if (isExtraHighlighted) {
+        const opacity = this.dimmedHighlights ? 0.2 : 0.4
+        this.ctx.fillStyle = `rgba(255, 165, 0, ${opacity})`
+        this.ctx.fillRect(x, y, this.tileSize, this.tileSize)
+      }
+      
       // Only show detector scan results over fog (if present)
       if (tile.detectorScan) {
         const scan = tile.detectorScan
@@ -314,6 +327,27 @@ export class GameRenderer {
         // Reset text alignment
         this.ctx.textAlign = 'center'
         this.ctx.textBaseline = 'middle'
+      }
+      
+      // Draw annotations on top of fog (for player quality of life)
+      if (tile.annotated === 'slash') {
+        // Gray slash (bottom-left to top-right)
+        this.ctx.strokeStyle = '#999'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        this.ctx.moveTo(x + 5, y + this.tileSize - 5)
+        this.ctx.lineTo(x + this.tileSize - 5, y + 5)
+        this.ctx.stroke()
+      } else if (tile.annotated === 'dog-ear') {
+        // Light green dog-ear (rounded upper right corner)
+        this.ctx.fillStyle = '#90ee90'
+        this.ctx.beginPath()
+        const cornerSize = 20
+        this.ctx.moveTo(x + this.tileSize - cornerSize, y)
+        this.ctx.lineTo(x + this.tileSize, y)
+        this.ctx.lineTo(x + this.tileSize, y + cornerSize)
+        this.ctx.quadraticCurveTo(x + this.tileSize - 2, y + 2, x + this.tileSize - cornerSize, y)
+        this.ctx.fill()
       }
       
       return // Skip all other rendering for fogged tiles
@@ -553,6 +587,11 @@ export class GameRenderer {
     
     // Check if we should draw the door (only if required tile is not revealed)
     const shouldDrawDoor = !requiredTile.revealed
+    
+    // Debug: Log when key/door indicators are hidden due to revealed required tile
+    if (requiredTile.revealed && (chainData.isBlocked || !chainData.isBlocked)) {
+      console.log(`Chain indicator hidden: required tile (${chainData.requiredTileX}, ${chainData.requiredTileY}) revealed`)
+    }
     
     // Handle tiles that have both a door and a key (middle tiles in 3-tile chains)
     if (chainData.isBlocked && chainData.hasSecondaryKey) {

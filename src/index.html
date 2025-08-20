@@ -269,8 +269,8 @@
         <div id="hp-info">HP: 100 / 100</div>
         <div id="gold-info">Gold: 0</div>
         <div id="stats-info">Attack: 5 | Defense: 0</div>
-        <div style="margin-top: 8px;">
-          <div id="upgrades" style="display: flex; gap: 2px; flex-wrap: wrap;"></div>
+        <div style="margin-top: 8px; flex: 1; overflow: hidden;">
+          <div id="upgrades" style="display: flex; gap: 2px; flex-wrap: wrap; overflow-y: auto; max-height: 60px;"></div>
         </div>
       </div>
     </div>
@@ -293,9 +293,9 @@
     <!-- Rewind widget removed -->
     
     <!-- Shop widget -->
-    <div id="shop-widget" class="status" style="display: none; margin-left: 20px;">
+    <div id="shop-widget" class="status" style="display: none; margin-left: 20px; min-width: 250px;">
       <div class="status-content" style="display: flex; flex-direction: column;">
-        <div id="shop-items"></div>
+        <div id="shop-items" style="overflow-x: auto; max-width: 100%;"></div>
         <button id="shop-close" style="padding: 6px 12px; margin-top: 4px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Close</button>
       </div>
     </div>

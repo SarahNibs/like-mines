@@ -3,7 +3,7 @@ import { PROTECTION } from './items'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
 import { ALL_CHARACTERS, Character } from './characters'
-import { ALL_SPELLS } from './SpellManager'
+import { ALL_SPELLS, SpellManager } from './SpellManager'
 import { CharacterTraitManager } from './CharacterTraits'
 import { UpgradeManager } from './UpgradeManager'
 
@@ -118,7 +118,8 @@ export function createCharacterRunState(characterId: string): RunState {
   // Add starting spell for non-Fighter characters
   // NOTE: Never use require() in browser ES modules - always use import at top level
   if (character.startingMana > 0) {
-    const startingSpell = character.startingSpell || ALL_SPELLS[Math.floor(Math.random() * ALL_SPELLS.length)]
+    const spellManager = new SpellManager()
+    const startingSpell = character.startingSpell || spellManager.getRandomSpell(character.id)
     runState.spells.push(startingSpell)
     // Note: Spells are displayed separately from regular inventory in UI
   }
@@ -146,7 +147,7 @@ export function createCharacterRunState(characterId: string): RunState {
     : [PROTECTION, ...character.startingItems]
   
   for (let i = 0; i < allStartingItems.length && i < runState.maxInventory; i++) {
-    runState.inventory[i] = allStartingItems[i]
+    runState.inventory[i] = createItemCopy(allStartingItems[i])
   }
   
   return runState
@@ -232,20 +233,30 @@ export function progressToNextLevel(currentState: GameState): GameState {
   const initialClue = generateClue(newBoard, currentState.run.upgrades)
   
   // Check if character should gain new spell at this level (Wizard trait)
+  // Calculate mana gain per level (base 1 + Wellspring upgrades)
+  const baseManaGain = 1
+  const wellspringCount = currentState.run.upgrades.filter(id => id === 'wellspring').length
+  const totalManaGain = baseManaGain + wellspringCount
+  
   let updatedRun = {
     ...currentState.run,
     currentLevel: newLevel,
-    // Mana regeneration: +1 mana per level (up to max)
-    mana: Math.min(currentState.run.maxMana, currentState.run.mana + 1)
+    // Mana regeneration: +1 mana per level (up to max) + Wellspring bonus
+    mana: Math.min(currentState.run.maxMana, currentState.run.mana + totalManaGain)
   }
   
   if (updatedRun.character) {
     const traitManager = new CharacterTraitManager()
     if (traitManager.shouldGainSpellAtLevel(updatedRun.character, newLevel)) {
-      // Gain a random spell
-      const availableSpells = ALL_SPELLS.filter(spell => 
+      // Gain a random spell (excluding Windstorm for non-Wizards)
+      let availableSpells = ALL_SPELLS.filter(spell => 
         !updatedRun.spells.some(ownedSpell => ownedSpell.id === spell.id)
       )
+      
+      // Filter out Windstorm for non-Wizard characters
+      if (updatedRun.character.id !== 'wizard') {
+        availableSpells = availableSpells.filter(spell => spell.id !== 'windstorm')
+      }
       
       if (availableSpells.length > 0) {
         const randomSpell = availableSpells[Math.floor(Math.random() * availableSpells.length)]
@@ -412,13 +423,26 @@ export function addItemToInventory(runState: RunState, item: ItemData): boolean 
   // Find first empty slot
   for (let i = 0; i < runState.inventory.length; i++) {
     if (runState.inventory[i] === null) {
-      runState.inventory[i] = item
+      // Create a deep copy of the item to prevent object sharing
+      runState.inventory[i] = createItemCopy(item)
       return true
     }
   }
   
   // No space - item is lost
   return false
+}
+
+// Create a deep copy of an item to prevent object sharing
+function createItemCopy(item: ItemData): ItemData {
+  const copy = { ...item }
+  
+  // Deep copy multiUse object if it exists
+  if (item.multiUse) {
+    copy.multiUse = { ...item.multiUse }
+  }
+  
+  return copy
 }
 
 // Remove item from inventory
