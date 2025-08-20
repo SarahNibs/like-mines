@@ -22,7 +22,8 @@ describe('UpgradeManager', () => {
       icon: '⚔️',
       description: 'Combat specialist',
       startingUpgrades: ['attack', 'defense'],
-      startingItems: []
+      startingItems: [],
+      startingMana: 0
     }
 
     touristCharacter = {
@@ -31,7 +32,8 @@ describe('UpgradeManager', () => {
       icon: '🎒',
       description: 'Shopping enthusiast',
       startingUpgrades: ['rich'],
-      startingItems: []
+      startingItems: [],
+      startingMana: 2
     }
     
     mockRun = {
@@ -112,13 +114,14 @@ describe('UpgradeManager', () => {
       expect(result.newRun.upgrades).toContain('income')
     })
 
-    it('should apply bag upgrade and add inventory slot', () => {
+    it('should apply bag upgrade and add inventory slots', () => {
       const result = manager.applyUpgrade(mockRun, 'bag')
 
       expect(result.success).toBe(true)
-      expect(result.newRun.maxInventory).toBe(4) // 3 + 1
-      expect(result.newRun.inventory.length).toBe(4)
+      expect(result.newRun.maxInventory).toBe(5) // 3 + 2
+      expect(result.newRun.inventory.length).toBe(5)
       expect(result.newRun.inventory[3]).toBe(null)
+      expect(result.newRun.inventory[4]).toBe(null)
       expect(result.newRun.upgrades).toContain('bag')
     })
 
@@ -362,6 +365,55 @@ describe('UpgradeManager', () => {
       expect(characterManager).toBeDefined()
       expect(characterManager.shouldForceShopOnEveryLevel(touristCharacter)).toBe(true)
       expect(characterManager.canCharacterLearnSpells(fighterCharacter)).toBe(false)
+    })
+
+    it('should include blocked upgrades in choices for Ranger', async () => {
+      // Create a Ranger character run
+      const rangerRun = { ...mockRun, characterId: 'ranger', character: { id: 'ranger', name: 'Ranger' } }
+      
+      const result = await manager.generateUpgradeChoices(['attack'], rangerRun)
+      
+      expect(result.success).toBe(true)
+      expect(result.upgradeChoice).toBeDefined()
+      
+      // Check if any blocked upgrades are included
+      const choices = result.upgradeChoice!.choices
+      const blockedChoices = choices.filter(choice => choice.blocked)
+      const availableChoices = choices.filter(choice => !choice.blocked)
+      
+      // Should have some choices
+      expect(choices.length).toBeGreaterThan(0)
+      
+      // If resting appears, it should be blocked for Ranger
+      const restingChoice = choices.find(choice => choice.id === 'resting')
+      if (restingChoice) {
+        expect(restingChoice.blocked).toBe(true)
+        expect(restingChoice.blockReason).toContain('Ranger')
+        expect(restingChoice.blockReason).toContain('resting')
+      }
+      
+      // Should prioritize available upgrades but may include blocked ones
+      expect(availableChoices.length + blockedChoices.length).toBe(choices.length)
+    })
+
+    it('should show blocked reasons for character restrictions', async () => {
+      // Create a Cleric character run  
+      const clericRun = { ...mockRun, characterId: 'cleric', character: { id: 'cleric', name: 'Cleric' } }
+      
+      const result = await manager.generateUpgradeChoices(['attack'], clericRun)
+      
+      expect(result.success).toBe(true)
+      expect(result.upgradeChoice).toBeDefined()
+      
+      const choices = result.upgradeChoice!.choices
+      
+      // If rich appears, it should be blocked for Cleric
+      const richChoice = choices.find(choice => choice.id === 'rich')
+      if (richChoice) {
+        expect(richChoice.blocked).toBe(true)
+        expect(richChoice.blockReason).toContain('Cleric')
+        expect(richChoice.blockReason).toContain('rich')
+      }
     })
   })
 })

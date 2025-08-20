@@ -4,6 +4,7 @@
 
 import { TurnManager } from '../TurnManager'
 import { GameState, RunState, Board, Tile, TileContent, TileOwner } from '../types'
+import { FIGHTER, CLERIC } from '../characters'
 
 describe('TurnManager', () => {
   let manager: TurnManager
@@ -28,7 +29,12 @@ describe('TurnManager', () => {
       inventory: [null, null, null],
       trophies: [],
       characterId: 'fighter',
-      temporaryBuffs: {}
+      character: FIGHTER,
+      temporaryBuffs: {},
+      mana: 0,
+      maxMana: 0,
+      spells: [],
+      spellEffects: []
     }
 
     mockBoard = {
@@ -366,7 +372,7 @@ describe('TurnManager', () => {
       const result = manager.processPlayerTileReveal(0, 0, mockGameState)
       
       expect(result.success).toBe(true)
-      expect(result.newRun.temporaryBuffs.blaze).toBe(5)
+      expect(result.newRun.temporaryBuffs.blaze).toBe(6)
       expect(result.newRun.upgrades).toContain('blaze-temp')
     })
   })
@@ -477,6 +483,49 @@ describe('TurnManager', () => {
       expect(result.success).toBe(true)
       // Tile should be marked as revealed by opponent
       expect(mockBoard.tiles[1][1].revealedBy).toBe('opponent')
+    })
+
+    it('should apply Cleric resting bonuses correctly', () => {
+      // Set up Cleric character
+      mockRun.characterId = 'cleric'
+      mockRun.character = CLERIC
+      mockRun.upgrades = ['resting']
+      mockRun.hp = 5 // Set to less than max to see healing
+      mockBoard.tiles[0][0].owner = 'neutral'
+      
+      const result = manager.processAutomatedTileReveal(0, 0, mockGameState)
+      
+      expect(result.success).toBe(true)
+      // Cleric should get 3 base + 1 trait bonus = 4 HP per resting upgrade
+      expect(result.newRun.hp).toBe(9) // 5 + 4 = 9
+    })
+
+    it('should compare Cleric vs Fighter resting healing', () => {
+      // Test Fighter first
+      mockRun.characterId = 'fighter'
+      mockRun.character = FIGHTER
+      mockRun.upgrades = ['resting']
+      mockRun.hp = 5
+      mockBoard.tiles[0][0].owner = 'neutral'
+      
+      let result = manager.processAutomatedTileReveal(0, 0, mockGameState)
+      expect(result.success).toBe(true)
+      const fighterHpAfterResting = result.newRun.hp
+      
+      // Reset for Cleric test
+      mockBoard.tiles[0][0].revealed = false // Reset tile
+      mockRun.characterId = 'cleric'
+      mockRun.character = CLERIC
+      mockRun.hp = 5
+      
+      result = manager.processAutomatedTileReveal(0, 0, mockGameState)
+      expect(result.success).toBe(true)
+      const clericHpAfterResting = result.newRun.hp
+      
+      // Cleric should heal more than Fighter
+      expect(clericHpAfterResting).toBeGreaterThan(fighterHpAfterResting)
+      expect(fighterHpAfterResting).toBe(7) // 5 + 2 = 7 (Fighter gets 2 per resting)
+      expect(clericHpAfterResting).toBe(9) // 5 + 4 = 9 (Cleric gets 3 + 1 bonus = 4 per resting)
     })
   })
 })

@@ -16,7 +16,7 @@ export const FIGHTER: Character = {
   id: 'fighter',
   name: 'FIGHTER',
   icon: '⚔️',
-  description: 'Attack, Defense, and Healthy upgrades',
+  description: 'Attack, Defense, and Healthy upgrades. +1 bonus to attack/defense upgrades and Blaze/Ward items. Cannot cast spells.',
   startingUpgrades: ['attack', 'defense', 'healthy'],
   startingItems: [], // Base Scroll of Protection added automatically
   startingMana: 0 // Fighter has no mana system
@@ -26,7 +26,7 @@ export const CLERIC: Character = {
   id: 'cleric',
   name: 'CLERIC',
   icon: '🛡️',
-  description: 'Resting and Defense upgrades, 2 extra Scrolls of Protection',
+  description: 'Resting and Defense upgrades, 2 extra Scrolls of Protection. HP bonuses from all sources +1. Cannot pick Rich, Income only once.',
   startingUpgrades: ['resting', 'defense'],
   startingItems: [PROTECTION, PROTECTION], // 2 extra (+ 1 base = 3 total)
   startingMana: 3 // 3/3 mana
@@ -36,7 +36,7 @@ export const WIZARD: Character = {
   id: 'wizard',
   name: 'WIZARD',
   icon: '🧙',
-  description: 'Wisdom upgrade, Staff of Fireballs, and 3 Transmutes (no Protection)',
+  description: 'Wisdom upgrade, Staff of Fireballs, and 3 Transmutes (no Protection). 4/4 mana, +1 spell damage, new spells at levels 6/11/16. Cannot take Defense.',
   startingUpgrades: ['wisdom'],
   startingItems: [STAFF_OF_FIREBALLS, TRANSMUTE, TRANSMUTE, TRANSMUTE], // Staff + 3 transmutes, no protection
   startingMana: 4 // 4/4 mana
@@ -46,7 +46,7 @@ export const RANGER: Character = {
   id: 'ranger',
   name: 'RANGER',
   icon: '🏹',
-  description: 'Two Attack upgrades and Quick upgrade',
+  description: 'Two Attack upgrades and Quick upgrade. Attacks first in combat, takes no damage if attack defeats monster.',
   startingUpgrades: ['attack', 'attack', 'quick'],
   startingItems: [], // Base Scroll of Protection added automatically
   startingMana: 2 // 2/2 mana

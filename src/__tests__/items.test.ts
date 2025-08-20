@@ -1,7 +1,7 @@
 import { 
   GOLD_COIN, 
   CHEST, 
-  FIRST_AID, 
+  HEALTH_POTION, 
   PROTECTION,
   ALL_ITEMS,
   SHOP_ITEMS,
@@ -47,8 +47,8 @@ describe('items', () => {
     })
 
     it('should include healing items with appropriate properties', () => {
-      expect(FIRST_AID.immediate).toBe(true)
-      expect(FIRST_AID.description).toContain('10 HP')
+      expect(HEALTH_POTION.immediate).toBe(false)
+      expect(HEALTH_POTION.description).toContain('8 HP')
     })
 
     it('should include protection item with appropriate properties', () => {

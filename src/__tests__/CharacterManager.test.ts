@@ -30,7 +30,11 @@ describe('CharacterManager', () => {
       inventory: [null, null, null],
       trophies: [],
       characterId: 'fighter',
-      temporaryBuffs: {}
+      temporaryBuffs: {},
+      mana: 2,
+      maxMana: 2,
+      spells: [],
+      spellEffects: []
     }
 
     fighter = {
@@ -39,7 +43,8 @@ describe('CharacterManager', () => {
       icon: '⚔️',
       description: 'Combat specialist',
       startingUpgrades: ['attack', 'defense'],
-      startingItems: []
+      startingItems: [],
+      startingMana: 0
     }
 
     tourist = {
@@ -48,7 +53,8 @@ describe('CharacterManager', () => {
       icon: '🎒',
       description: 'Shopping enthusiast',
       startingUpgrades: ['rich'],
-      startingItems: []
+      startingItems: [],
+      startingMana: 2
     }
 
     wizard = {
@@ -57,7 +63,8 @@ describe('CharacterManager', () => {
       icon: '🧙',
       description: 'Magic user',
       startingUpgrades: ['wisdom'],
-      startingItems: []
+      startingItems: [],
+      startingMana: 4
     }
   })
 
@@ -66,14 +73,14 @@ describe('CharacterManager', () => {
       const modification = manager.modifyUpgradeApplication(fighter, 'attack', mockRun)
       
       expect(modification.statBonuses?.attack).toBe(1)
-      expect(modification.customMessage).toContain('Fighter bonus: +1 additional attack!')
+      expect(modification.customMessage).toContain('FIGHTER trait: +1 extra attack')
     })
 
     it('should provide defense bonus when fighter gains defense upgrade', () => {
       const modification = manager.modifyUpgradeApplication(fighter, 'defense', mockRun)
       
       expect(modification.statBonuses?.defense).toBe(1)
-      expect(modification.customMessage).toContain('Fighter bonus: +1 additional defense!')
+      expect(modification.customMessage).toContain('FIGHTER trait: +1 extra defense')
     })
 
     it('should not provide bonuses for other upgrades', () => {
@@ -180,7 +187,8 @@ describe('CharacterManager', () => {
         icon: '🧪',
         description: 'Test character',
         startingUpgrades: [],
-        startingItems: []
+        startingItems: [],
+        startingMana: 2
       }
 
       const testUpgrade: UpgradeData = {
@@ -220,7 +228,8 @@ describe('CharacterManager', () => {
         icon: '🔧',
         description: 'Custom character',
         startingUpgrades: [],
-        startingItems: []
+        startingItems: [],
+        startingMana: 2
       }
 
       const modification = manager.modifyUpgradeApplication(customCharacter, 'income', mockRun)
@@ -254,7 +263,8 @@ describe('CharacterManager', () => {
         icon: '❓',
         description: 'Unknown character',
         startingUpgrades: [],
-        startingItems: []
+        startingItems: [],
+        startingMana: 2
       }
 
       const behavior = manager.getCharacterBehavior(unknownCharacter)

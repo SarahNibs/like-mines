@@ -5,6 +5,7 @@
 
 import { GameState, RunState, Board, Tile, getTileAt, TileContent } from './types'
 import { revealTile, checkBoardStatus, fightMonster, applyItemEffect, addItemToInventory, defeatMonster } from './gameLogic'
+import { CharacterTraitManager } from './CharacterTraits'
 
 export interface TurnResult {
   success: boolean
@@ -164,7 +165,22 @@ export class TurnManager {
     if (context.tile.owner === 'neutral') {
       const restingCount = context.run.upgrades.filter(id => id === 'resting').length
       if (restingCount > 0) {
-        const healAmount = restingCount * 2
+        let baseHealPerResting = 2
+        
+        // Cleric gets +3 base heal per resting instead of +2
+        if (context.run.character?.id === 'cleric') {
+          baseHealPerResting = 3
+        }
+        
+        let healAmount = restingCount * baseHealPerResting
+        
+        // Apply Cleric trait bonus for resting triggers (+1 more per trigger)
+        if (context.run.character) {
+          const traitManager = new CharacterTraitManager()
+          const bonus = traitManager.getHpGainBonus(context.run.character, 'restingTrigger')
+          healAmount += restingCount * bonus // +1 per resting upgrade for Cleric
+        }
+        
         context.run.hp = Math.min(context.run.maxHp, context.run.hp + healAmount)
         console.log(`Resting: Healed ${healAmount} HP from revealing neutral tile`)
       }
@@ -304,7 +320,7 @@ export class TurnManager {
       // Monster is always defeated when player survives the fight in standard tile reveals
       const defeatResult = defeatMonster(context.tile, monster.hp, context.run)
       
-      if (defeatResult.richUpgradeTriggered) {
+      if (defeatResult.richTriggered) {
         result.richUpgradeTriggered = { x: context.tile.x, y: context.tile.y }
       }
       
@@ -321,23 +337,41 @@ export class TurnManager {
     if (item.id === 'ward') {
       // Apply ward effect immediately
       if (!run.temporaryBuffs) run.temporaryBuffs = {}
-      run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 3
+      let wardBonus = 3
+      // Apply Fighter trait bonus
+      if (run.character) {
+        const traitManager = new CharacterTraitManager()
+        wardBonus += traitManager.getItemEffectBonus(run.character, 'ward')
+      }
+      run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + wardBonus
       if (!run.upgrades.includes('ward-temp')) {
         run.upgrades.push('ward-temp')
       }
-      console.log(`Inventory full! Ward auto-applied: +3 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
+      console.log(`Inventory full! Ward auto-applied: +${wardBonus} defense (total: +${run.temporaryBuffs.ward}) for your next fight.`)
     } else if (item.id === 'blaze') {
       // Apply blaze effect immediately
       if (!run.temporaryBuffs) run.temporaryBuffs = {}
-      run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
+      let blazeBonus = 5
+      // Apply Fighter trait bonus
+      if (run.character) {
+        const traitManager = new CharacterTraitManager()
+        blazeBonus += traitManager.getItemEffectBonus(run.character, 'blaze')
+      }
+      run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + blazeBonus
       if (!run.upgrades.includes('blaze-temp')) {
         run.upgrades.push('blaze-temp')
       }
-      console.log(`Inventory full! Blaze auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`)
+      console.log(`Inventory full! Blaze auto-applied: +${blazeBonus} attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`)
     } else if (item.id === 'health-potion') {
       // Apply health potion effect immediately
-      run.hp = Math.min(run.maxHp, run.hp + 8)
-      console.log(`Inventory full! Health Potion auto-applied: +8 HP (${run.hp}/${run.maxHp}).`)
+      let hpGain = 8
+      // Apply Cleric HP gain bonus
+      if (run.character) {
+        const traitManager = new CharacterTraitManager()
+        hpGain += traitManager.getHpGainBonus(run.character, 'healthPotion')
+      }
+      run.hp = Math.min(run.maxHp, run.hp + hpGain)
+      console.log(`Inventory full! Health Potion auto-applied: +${hpGain} HP (${run.hp}/${run.maxHp}).`)
     } else {
       console.log(`Inventory full! ${item.name} was lost.`)
     }

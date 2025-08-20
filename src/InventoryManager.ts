@@ -36,7 +36,7 @@ export class InventoryManager {
    * @param useWhistleCallback Callback to use whistle
    * @returns Result of item usage
    */
-  useInventoryItem(
+  async useInventoryItem(
     currentRun: RunState,
     itemIndex: number,
     applyItemEffectCallback: (run: RunState, item: ItemData) => string,
@@ -44,7 +44,7 @@ export class InventoryManager {
     generateClueCallback?: () => void,
     useCrystalBallCallback?: () => void,
     useWhistleCallback?: () => void
-  ): InventoryResult {
+  ): Promise<InventoryResult> {
     const item = currentRun.inventory[itemIndex]
     
     if (!item) {
@@ -92,13 +92,20 @@ export class InventoryManager {
       case 'ward': {
         // Stack ward bonuses
         if (!run.temporaryBuffs) run.temporaryBuffs = {}
-        run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 3
+        let wardBonus = 3
+        // Apply Fighter trait bonus
+        if (run.character) {
+          const { CharacterTraitManager } = await import('./CharacterTraits')
+          const traitManager = new CharacterTraitManager()
+          wardBonus += traitManager.getItemEffectBonus(run.character, 'ward')
+        }
+        run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + wardBonus
         if (!run.upgrades.includes('ward-temp')) {
           run.upgrades = [...run.upgrades, 'ward-temp'] // Add to upgrades list for display
         }
         removeItemFromInventoryCallback(run, itemIndex)
         
-        const message = `Ward activated! +3 defense (total: +${run.temporaryBuffs.ward}) for your next fight.`
+        const message = `Ward activated! +${wardBonus} defense (total: +${run.temporaryBuffs.ward}) for your next fight.`
         console.log(message)
         
         return {
@@ -111,13 +118,20 @@ export class InventoryManager {
       case 'blaze': {
         // Stack blaze bonuses
         if (!run.temporaryBuffs) run.temporaryBuffs = {}
-        run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
+        let blazeBonus = 5
+        // Apply Fighter trait bonus
+        if (run.character) {
+          const { CharacterTraitManager } = await import('./CharacterTraits')
+          const traitManager = new CharacterTraitManager()
+          blazeBonus += traitManager.getItemEffectBonus(run.character, 'blaze')
+        }
+        run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + blazeBonus
         if (!run.upgrades.includes('blaze-temp')) {
           run.upgrades = [...run.upgrades, 'blaze-temp'] // Add to upgrades list for display
         }
         removeItemFromInventoryCallback(run, itemIndex)
         
-        const message = `Blaze activated! +5 attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`
+        const message = `Blaze activated! +${blazeBonus} attack (total: +${run.temporaryBuffs.blaze}) for your next fight.`
         console.log(message)
         
         return {
@@ -129,10 +143,17 @@ export class InventoryManager {
       
       case 'health-potion': {
         // Apply health potion effect
-        run.hp = Math.min(run.maxHp, run.hp + 8)
+        let hpGain = 8
+        // Apply Cleric HP gain bonus
+        if (run.character) {
+          const { CharacterTraitManager } = await import('./CharacterTraits')
+          const traitManager = new CharacterTraitManager()
+          hpGain += traitManager.getHpGainBonus(run.character, 'healthPotion')
+        }
+        run.hp = Math.min(run.maxHp, run.hp + hpGain)
         removeItemFromInventoryCallback(run, itemIndex)
         
-        const message = `Health Potion used! Gained 8 HP (${run.hp}/${run.maxHp}).`
+        const message = `Health Potion used! Gained ${hpGain} HP (${run.hp}/${run.maxHp}).`
         console.log(message)
         
         return {
@@ -188,6 +209,16 @@ export class InventoryManager {
       
       // Items that trigger special behaviors
       case 'transmute': {
+        // Tourist cannot use Transmute - auto-discard it
+        if (currentRun.character?.id === 'tourist') {
+          removeItemFromInventoryCallback(run, itemIndex)
+          return {
+            newRun: run,
+            success: true,
+            message: 'Tourist cannot use Transmute! Item discarded automatically.'
+          }
+        }
+        
         return {
           newRun: currentRun,
           success: true,

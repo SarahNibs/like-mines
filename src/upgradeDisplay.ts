@@ -72,9 +72,33 @@ export function updateUpgradeChoiceWidget(
     const buttons = [upgradeChoice0Btn, upgradeChoice1Btn, upgradeChoice2Btn]
     state.upgradeChoice.choices.forEach((upgrade: any, index: number) => {
       if (index < buttons.length) {
-        buttons[index].textContent = upgrade.icon
-        buttons[index].title = `${upgrade.name}: ${upgrade.description}`
-        buttons[index].style.display = 'flex'
+        const button = buttons[index]
+        button.textContent = upgrade.icon
+        
+        if (upgrade.blocked) {
+          // Blocked upgrade styling
+          button.title = `${upgrade.name}: ${upgrade.description}\n\n❌ ${upgrade.blockReason}`
+          button.style.display = 'flex'
+          button.style.opacity = '0.4'
+          button.style.cursor = 'not-allowed'
+          button.style.backgroundColor = '#333'
+          button.style.color = '#666'
+          button.disabled = true
+          
+          // Add a visual indicator for blocked status
+          button.style.position = 'relative'
+          button.style.textDecoration = 'line-through'
+        } else {
+          // Available upgrade styling
+          button.title = `${upgrade.name}: ${upgrade.description}`
+          button.style.display = 'flex'
+          button.style.opacity = '1'
+          button.style.cursor = 'pointer'
+          button.style.backgroundColor = ''
+          button.style.color = ''
+          button.disabled = false
+          button.style.textDecoration = 'none'
+        }
       }
     })
     

@@ -8,6 +8,7 @@ import { InventoryManager } from './InventoryManager'
 import { UpgradeManager } from './UpgradeManager'
 import { TurnManager } from './TurnManager'
 import { SpellManager } from './SpellManager'
+import { CharacterManager } from './CharacterManager'
 
 // Simple vanilla TypeScript store with observers
 class GameStore {
@@ -22,6 +23,7 @@ class GameStore {
   private upgradeManager: UpgradeManager
   private turnManager: TurnManager
   private spellManager: SpellManager
+  private characterManager: CharacterManager
 
   constructor() {
     this.state = createInitialGameState()
@@ -33,6 +35,7 @@ class GameStore {
     this.upgradeManager = new UpgradeManager()
     this.turnManager = new TurnManager()
     this.spellManager = new SpellManager()
+    this.characterManager = new CharacterManager()
   }
 
   // Get current state
@@ -255,7 +258,16 @@ class GameStore {
     // Reset AI for new board
     this.ai.resetForNewBoard()
     
-    this.setState(newState)
+    // Check if character is Tourist and should auto-open shop
+    if (newState.run.character && this.characterManager.shouldForceShopOnEveryLevel(newState.run.character)) {
+      console.log('Tourist character: Auto-opening shop for new level')
+      // Set state first, then open shop
+      this.setState(newState)
+      // Open shop immediately for Tourist
+      this.openShop()
+    } else {
+      this.setState(newState)
+    }
   }
 
   // Toggle tile annotation (3-state cycle: none -> slash -> dog-ear -> none)
@@ -286,12 +298,12 @@ class GameStore {
 
 
   // Use item from inventory
-  useInventoryItem(index: number): void {
+  async useInventoryItem(index: number): Promise<void> {
     const item = this.state.run.inventory[index]
     if (!item) return
     
     // Try to use item through InventoryManager first
-    const result = this.inventoryManager.useInventoryItem(
+    const result = await this.inventoryManager.useInventoryItem(
       this.state.run,
       index,
       (run, item) => applyItemEffect(run, item),
@@ -730,6 +742,12 @@ class GameStore {
 
   // Start transmute mode
   private startTransmuteMode(itemIndex: number): void {
+    // Check if character can use transmute
+    if (this.state.run.character?.id === 'below') {
+      console.log('Below character cannot use Transmute!')
+      return
+    }
+    
     console.log('Transmute activated! Click any unrevealed tile to convert it to your tile.')
     this.setState({ 
       transmuteMode: true,
@@ -1239,18 +1257,23 @@ class GameStore {
 
   // Show upgrade choice widget
   triggerUpgradeChoice(): void {
-    // Import available upgrades and pick 3 random ones
-    import('./upgrades').then(({ getAvailableUpgrades }) => {
-      const availableUpgrades = getAvailableUpgrades(this.state.run.upgrades)
-      
-      // Shuffle and pick 3 random upgrades
-      const shuffled = [...availableUpgrades].sort(() => Math.random() - 0.5)
-      const choices = shuffled.slice(0, 3)
-      
-      this.setState({
-        upgradeChoice: { choices }
+    // Use UpgradeManager to generate choices with character filtering
+    this.upgradeManager.generateUpgradeChoices(this.state.run.upgrades, this.state.run)
+      .then(result => {
+        if (result.success && result.upgradeChoice) {
+          this.setState({
+            upgradeChoice: result.upgradeChoice
+          })
+        } else {
+          console.error('Failed to generate upgrade choices:', result.message)
+          // Fallback to no upgrade choice
+          this.setState({ upgradeChoice: null })
+        }
       })
-    })
+      .catch(error => {
+        console.error('Error generating upgrade choices:', error)
+        this.setState({ upgradeChoice: null })
+      })
   }
 
   // Choose one of the upgrade options
@@ -1258,6 +1281,13 @@ class GameStore {
     if (!this.state.upgradeChoice || index >= this.state.upgradeChoice.choices.length) return
     
     const chosenUpgrade = this.state.upgradeChoice.choices[index]
+    
+    // Check if upgrade is blocked
+    if (chosenUpgrade.blocked) {
+      console.log(`Cannot choose blocked upgrade: ${chosenUpgrade.blockReason}`)
+      return
+    }
+    
     this.applyUpgrade(chosenUpgrade.id)
     
     // Check if we need to trigger AI turn after choosing upgrade
@@ -1311,7 +1341,7 @@ class GameStore {
     import('./gameLogic').then(({ createBoardForLevel }) => {
       import('./clues').then(({ generateClue }) => {
         // Create board for level 1 with character upgrades applied
-        const board = createBoardForLevel(1, characterRun.gold, characterRun.upgrades)
+        const board = createBoardForLevel(1, characterRun.gold, characterRun.upgrades, characterRun.character)
         
         // Apply WISDOM upgrade: add detector scan to random tile (for level 1)
         if (characterRun.upgrades.includes('wisdom')) {

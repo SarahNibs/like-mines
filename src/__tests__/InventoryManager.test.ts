@@ -59,8 +59,8 @@ describe('InventoryManager', () => {
       mockUseWhistle.mockClear()
     })
 
-    it('should use crystal ball and indicate tile reveal needed', () => {
-      const result = manager.useInventoryItem(
+    it('should use crystal ball and indicate tile reveal needed', async () => {
+      const result = await manager.useInventoryItem(
         mockRun,
         0, // Crystal ball
         mockApplyItemEffect,
@@ -77,8 +77,8 @@ describe('InventoryManager', () => {
       expect(mockUseCrystalBall).toHaveBeenCalled()
     })
 
-    it('should use clue item and trigger clue generation', () => {
-      const result = manager.useInventoryItem(
+    it('should use clue item and trigger clue generation', async () => {
+      const result = await manager.useInventoryItem(
         mockRun,
         1, // Clue
         mockApplyItemEffect,
@@ -94,14 +94,14 @@ describe('InventoryManager', () => {
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 1)
     })
 
-    it('should use generic items through effect system', () => {
+    it('should use generic items through effect system', async () => {
       const healingItem = { id: 'first-aid', name: 'First Aid', description: 'Heals HP' } as ItemData
       const runWithHealing = {
         ...mockRun,
         inventory: [healingItem, null, null]
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithHealing,
         0,
         mockApplyItemEffect,
@@ -116,8 +116,8 @@ describe('InventoryManager', () => {
       expect(result.message).toBe('Healed 10 HP')
     })
 
-    it('should fail when using empty inventory slot', () => {
-      const result = manager.useInventoryItem(
+    it('should fail when using empty inventory slot', async () => {
+      const result = await manager.useInventoryItem(
         mockRun,
         2, // Empty slot
         mockApplyItemEffect,
@@ -132,8 +132,8 @@ describe('InventoryManager', () => {
       expect(mockApplyItemEffect).not.toHaveBeenCalled()
     })
 
-    it('should fail when using invalid inventory index', () => {
-      const result = manager.useInventoryItem(
+    it('should fail when using invalid inventory index', async () => {
+      const result = await manager.useInventoryItem(
         mockRun,
         99, // Invalid index
         mockApplyItemEffect,
@@ -147,7 +147,7 @@ describe('InventoryManager', () => {
       expect(mockRemoveFromInventory).not.toHaveBeenCalled()
     })
 
-    it('should use ward item and apply defense buff', () => {
+    it('should use ward item and apply defense buff', async () => {
       const wardItem = { id: 'ward', name: 'Ward', description: 'Defense buff' } as ItemData
       const runWithWard = {
         ...mockRun,
@@ -155,7 +155,7 @@ describe('InventoryManager', () => {
         temporaryBuffs: {}
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithWard,
         0,
         mockApplyItemEffect,
@@ -166,13 +166,13 @@ describe('InventoryManager', () => {
       )
 
       expect(result.success).toBe(true)
-      expect(result.message).toContain('Ward activated! +3 defense')
-      expect(result.newRun.temporaryBuffs?.ward).toBe(3)
+      expect(result.message).toContain('Ward activated! +4 defense')
+      expect(result.newRun.temporaryBuffs?.ward).toBe(4)
       expect(result.newRun.upgrades).toContain('ward-temp')
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
     })
 
-    it('should use blaze item and apply attack buff', () => {
+    it('should use blaze item and apply attack buff', async () => {
       const blazeItem = { id: 'blaze', name: 'Blaze', description: 'Attack buff' } as ItemData
       const runWithBlaze = {
         ...mockRun,
@@ -180,7 +180,7 @@ describe('InventoryManager', () => {
         temporaryBuffs: {}
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithBlaze,
         0,
         mockApplyItemEffect,
@@ -191,13 +191,13 @@ describe('InventoryManager', () => {
       )
 
       expect(result.success).toBe(true)
-      expect(result.message).toContain('Blaze activated! +5 attack')
-      expect(result.newRun.temporaryBuffs?.blaze).toBe(5)
+      expect(result.message).toContain('Blaze activated! +6 attack')
+      expect(result.newRun.temporaryBuffs?.blaze).toBe(6)
       expect(result.newRun.upgrades).toContain('blaze-temp')
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
     })
 
-    it('should use protection item and add protection charges', () => {
+    it('should use protection item and add protection charges', async () => {
       const protectionItem = { id: 'protection', name: 'Protection', description: 'Protection' } as ItemData
       const runWithProtection = {
         ...mockRun,
@@ -205,7 +205,7 @@ describe('InventoryManager', () => {
         temporaryBuffs: {}
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithProtection,
         0,
         mockApplyItemEffect,
@@ -221,14 +221,14 @@ describe('InventoryManager', () => {
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
     })
 
-    it('should use whistle item and trigger whistle callback', () => {
+    it('should use whistle item and trigger whistle callback', async () => {
       const whistleItem = { id: 'whistle', name: 'Whistle', description: 'Redistributes monsters' } as ItemData
       const runWithWhistle = {
         ...mockRun,
         inventory: [whistleItem, null, null]
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithWhistle,
         0,
         mockApplyItemEffect,
@@ -244,14 +244,14 @@ describe('InventoryManager', () => {
       expect(mockRemoveFromInventory).toHaveBeenCalledWith(expect.any(Object), 0)
     })
 
-    it('should return behavior trigger for transmute item', () => {
+    it('should return behavior trigger for transmute item', async () => {
       const transmuteItem = { id: 'transmute', name: 'Transmute', description: 'Special item' } as ItemData
       const runWithTransmute = {
         ...mockRun,
         inventory: [transmuteItem, null, null]
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithTransmute,
         0,
         mockApplyItemEffect,
@@ -271,14 +271,14 @@ describe('InventoryManager', () => {
       expect(mockRemoveFromInventory).not.toHaveBeenCalled()
     })
 
-    it('should return behavior trigger for detector item', () => {
+    it('should return behavior trigger for detector item', async () => {
       const detectorItem = { id: 'detector', name: 'Detector', description: 'Special item' } as ItemData
       const runWithDetector = {
         ...mockRun,
         inventory: [detectorItem, null, null]
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithDetector,
         0,
         mockApplyItemEffect,
@@ -297,14 +297,14 @@ describe('InventoryManager', () => {
       })
     })
 
-    it('should return behavior trigger for staff item', () => {
+    it('should return behavior trigger for staff item', async () => {
       const staffItem = { id: 'staff-of-fireballs', name: 'Staff', description: 'Special item' } as ItemData
       const runWithStaff = {
         ...mockRun,
         inventory: [staffItem, null, null]
       }
 
-      const result = manager.useInventoryItem(
+      const result = await manager.useInventoryItem(
         runWithStaff,
         0,
         mockApplyItemEffect,
@@ -695,6 +695,89 @@ describe('InventoryManager', () => {
 
       expect(result.success).toBe(false)
       expect(result.message).toBe('Invalid ring item')
+    })
+  })
+
+  describe('Tourist Transmute auto-discard', () => {
+    const mockRemoveFromInventory = jest.fn((run: RunState, index: number) => {
+      run.inventory[index] = null
+    })
+
+    beforeEach(() => {
+      mockRemoveFromInventory.mockClear()
+    })
+
+    it('should auto-discard Transmute item for Tourist character', async () => {
+      const transmuteItem = {
+        id: 'transmute',
+        name: 'Transmute',
+        description: 'Turn tiles into yours'
+      } as ItemData
+
+      const touristRun = {
+        ...mockRun,
+        character: {
+          id: 'tourist',
+          name: 'Tourist',
+          description: 'A traveler',
+          startingHp: 10,
+          startingItems: [],
+          startingUpgrades: []
+        },
+        inventory: [transmuteItem, null, null]
+      }
+
+      const result = await manager.useInventoryItem(
+        touristRun,
+        0, // Transmute at index 0
+        () => 'No effect', // mockApplyItemEffect
+        mockRemoveFromInventory, // mockRemoveFromInventory
+        undefined, // generateClueCallback
+        undefined, // useCrystalBallCallback
+        undefined  // useWhistleCallback
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Tourist cannot use Transmute! Item discarded automatically.')
+      expect(mockRemoveFromInventory).toHaveBeenCalledWith(touristRun, 0)
+      expect(result.triggerBehavior).toBeUndefined() // No transmute mode should be triggered
+    })
+
+    it('should allow Transmute for non-Tourist characters', async () => {
+      const transmuteItem = {
+        id: 'transmute',
+        name: 'Transmute',
+        description: 'Turn tiles into yours'
+      } as ItemData
+
+      const fighterRun = {
+        ...mockRun,
+        character: {
+          id: 'fighter',
+          name: 'Fighter',
+          description: 'A warrior',
+          startingHp: 10,
+          startingItems: [],
+          startingUpgrades: []
+        },
+        inventory: [transmuteItem, null, null]
+      }
+
+      const result = await manager.useInventoryItem(
+        fighterRun,
+        0, // Transmute at index 0
+        () => 'No effect', // mockApplyItemEffect
+        mockRemoveFromInventory, // mockRemoveFromInventory
+        undefined, // generateClueCallback
+        undefined, // useCrystalBallCallback
+        undefined  // useWhistleCallback
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Transmute mode activated')
+      expect(mockRemoveFromInventory).not.toHaveBeenCalled() // Item should not be removed
+      expect(result.triggerBehavior).toBeDefined() // Transmute mode should be triggered
+      expect(result.triggerBehavior?.type).toBe('transmute')
     })
   })
 })

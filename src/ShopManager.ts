@@ -4,6 +4,8 @@
  */
 
 import { GameState, RunState, ItemData, UpgradeData } from './types'
+import { CharacterTraitManager } from './CharacterTraits'
+import { CharacterManager } from './CharacterManager'
 
 export interface ShopItem {
   item: ItemData | UpgradeData
@@ -20,6 +22,11 @@ export interface ShopResult {
 }
 
 export class ShopManager {
+  private characterManager: CharacterManager
+  
+  constructor() {
+    this.characterManager = new CharacterManager()
+  }
   
   /**
    * Open shop and generate items/upgrades with level-based pricing
@@ -46,7 +53,14 @@ export class ShopManager {
       const itemCosts = []
       for (let i = 0; i < totalItemCount; i++) {
         const extraCost = i >= baseItemCount ? i - baseItemCount + 1 : 0 // Traders extra items cost +1 more
-        itemCosts.push(baseItemCost + i + extraCost)
+        let cost = baseItemCost + i + extraCost
+        
+        // Apply character-specific price modifications
+        if (currentRun.character) {
+          cost = this.characterManager.modifyShopPrice(currentRun.character, cost, 'item', level)
+        }
+        
+        itemCosts.push(cost)
       }
       
       // Generate upgrade costs: Level 3: 7 / Level 6: 8 / Level 9: 9 etc.
@@ -54,7 +68,14 @@ export class ShopManager {
       const totalUpgradeCount = 1 + tradersCount
       const upgradeCosts = []
       for (let i = 0; i < totalUpgradeCount; i++) {
-        upgradeCosts.push(baseUpgradeCost + (i > 0 ? i : 0))
+        let cost = baseUpgradeCost + (i > 0 ? i : 0)
+        
+        // Apply character-specific price modifications
+        if (currentRun.character) {
+          cost = this.characterManager.modifyShopPrice(currentRun.character, cost, 'upgrade', level)
+        }
+        
+        upgradeCosts.push(cost)
       }
       
       const shopItems: ShopItem[] = []
@@ -84,8 +105,29 @@ export class ShopManager {
         }
       }
       
-      // Add random upgrades
-      const availableUpgrades = getAvailableUpgrades(currentRun.upgrades)
+      // Add random upgrades (filtered by character restrictions)
+      let availableUpgrades = getAvailableUpgrades(currentRun.upgrades)
+      
+      // Filter out upgrades blocked by character traits
+      if (currentRun.character) {
+        const traitManager = new CharacterTraitManager()
+        
+        availableUpgrades = availableUpgrades.filter(upgrade => {
+          // Check if upgrade is blocked
+          if (traitManager.isUpgradeBlocked(currentRun.character!, upgrade.id)) {
+            return false
+          }
+          
+          // Check if upgrade has reached its limit
+          const currentCount = currentRun.upgrades.filter(id => id === upgrade.id).length
+          if (traitManager.isUpgradeLimitReached(currentRun.character!, upgrade.id, currentCount)) {
+            return false
+          }
+          
+          return true
+        })
+      }
+      
       for (let i = 0; i < totalUpgradeCount && i < availableUpgrades.length; i++) {
         const randomUpgrade = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)]
         shopItems.push({
@@ -195,8 +237,14 @@ export class ShopManager {
         const item = shopItem.item as ItemData
         if (item.id === 'health-potion') {
           // Auto-apply health potion effect
-          run.hp = Math.min(run.maxHp, run.hp + 8)
-          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +8 HP (${run.hp}/${run.maxHp})`
+          let hpGain = 8
+          // Apply Cleric HP gain bonus
+          if (run.character) {
+            const traitManager = new CharacterTraitManager()
+            hpGain += traitManager.getHpGainBonus(run.character, 'healthPotion')
+          }
+          run.hp = Math.min(run.maxHp, run.hp + hpGain)
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +${hpGain} HP (${run.hp}/${run.maxHp})`
           console.log(message)
         } else if (item.id === 'mana-potion') {
           // Auto-apply mana potion effect
@@ -206,20 +254,32 @@ export class ShopManager {
         } else if (item.id === 'ward') {
           // Auto-apply ward effect
           if (!run.temporaryBuffs) run.temporaryBuffs = {}
-          run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + 3
+          let wardBonus = 3
+          // Apply Fighter trait bonus
+          if (run.character) {
+            const traitManager = new CharacterTraitManager()
+            wardBonus += traitManager.getItemEffectBonus(run.character, 'ward')
+          }
+          run.temporaryBuffs.ward = (run.temporaryBuffs.ward || 0) + wardBonus
           if (!run.upgrades.includes('ward-temp')) {
             run.upgrades = [...run.upgrades, 'ward-temp']
           }
-          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +3 defense (total: +${run.temporaryBuffs.ward})`
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +${wardBonus} defense (total: +${run.temporaryBuffs.ward})`
           console.log(message)
         } else if (item.id === 'blaze') {
           // Auto-apply blaze effect
           if (!run.temporaryBuffs) run.temporaryBuffs = {}
-          run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + 5
+          let blazeBonus = 5
+          // Apply Fighter trait bonus
+          if (run.character) {
+            const traitManager = new CharacterTraitManager()
+            blazeBonus += traitManager.getItemEffectBonus(run.character, 'blaze')
+          }
+          run.temporaryBuffs.blaze = (run.temporaryBuffs.blaze || 0) + blazeBonus
           if (!run.upgrades.includes('blaze-temp')) {
             run.upgrades = [...run.upgrades, 'blaze-temp']
           }
-          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +5 attack (total: +${run.temporaryBuffs.blaze})`
+          message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold - inventory full, auto-applied: +${blazeBonus} attack (total: +${run.temporaryBuffs.blaze})`
           console.log(message)
         } else {
           message = `Bought ${shopItem.item.name} for ${shopItem.cost} gold but inventory full - item lost!`

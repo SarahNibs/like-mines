@@ -5,6 +5,7 @@
 import { SpellData, SpellEffect, RunState, GameState, Board, ProbabilisticClue, TileContent } from './types'
 import { generateClue } from './clues'
 import { defeatMonster } from './gameLogic'
+import { CharacterTraitManager } from './CharacterTraits'
 
 // Spell Definitions
 export const MAGIC_MISSILE: SpellData = {
@@ -62,11 +63,24 @@ export interface SpellCastResult {
 }
 
 export class SpellManager {
+  private traitManager: CharacterTraitManager
+
+  constructor() {
+    this.traitManager = new CharacterTraitManager()
+  }
   
   /**
    * Check if a spell can be cast (mana requirements, etc.)
    */
   canCastSpell(spell: SpellData, run: RunState): { canCast: boolean, reason?: string } {
+    // Check if character can cast spells at all
+    if (run.character && !this.traitManager.canCharacterCastSpells(run.character)) {
+      return {
+        canCast: false,
+        reason: `${run.character.name} cannot cast spells`
+      }
+    }
+    
     if (run.mana < spell.manaCost) {
       return { 
         canCast: false, 
@@ -157,7 +171,14 @@ export class SpellManager {
    * Cast Magic Missile - damage monster on target tile
    */
   private castMagicMissile(run: RunState, gameState: GameState, targetX: number, targetY: number): SpellCastResult {
-    const damage = Math.ceil(run.currentLevel / 2)
+    let damage = Math.ceil(run.currentLevel / 2)
+    
+    // Apply character trait damage bonus
+    if (run.character) {
+      const damageBonus = this.traitManager.getSpellDamageBonus(run.character)
+      damage += damageBonus
+    }
+    
     const tile = gameState.board.tiles[targetY]?.[targetX]
     
     if (!tile) {
@@ -370,6 +391,13 @@ export class SpellManager {
       return { messages, richUpgradeTriggers }
     }
     
+    // Apply character trait damage bonus to Stinking Cloud
+    let damage = effect.damage
+    if (runState?.character) {
+      const damageBonus = this.traitManager.getSpellDamageBonus(runState.character)
+      damage += damageBonus
+    }
+    
     // Apply damage to monsters on target tile and adjacent tiles
     const centerX = effect.tileX
     const centerY = effect.tileY
@@ -389,7 +417,7 @@ export class SpellManager {
           if (tile.monsterData && !tile.revealed) {
             if (runState) {
               // Use centralized defeat handling when runState is available
-              const defeatResult = defeatMonster(tile, effect.damage, runState)
+              const defeatResult = defeatMonster(tile, damage, runState)
               if (defeatResult.defeated) {
                 messages.push(`Stinking Cloud killed ${defeatResult.monsterName}!`)
                 if (defeatResult.goldGained > 0) {
@@ -403,7 +431,7 @@ export class SpellManager {
               monstersAffected++
             } else {
               // Fallback for cases without runState (shouldn't happen in normal gameplay)
-              tile.monsterData.hp -= effect.damage
+              tile.monsterData.hp -= damage
               monstersAffected++
               
               if (tile.monsterData.hp <= 0) {
@@ -419,7 +447,7 @@ export class SpellManager {
     }
     
     if (monstersAffected > 0) {
-      messages.push(`Stinking Cloud dealt ${effect.damage} damage to ${monstersAffected} monster(s)`)
+      messages.push(`Stinking Cloud dealt ${damage} damage to ${monstersAffected} monster(s)`)
     }
     
     return { messages, richUpgradeTriggers }

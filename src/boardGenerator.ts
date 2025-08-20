@@ -452,7 +452,13 @@ function spawnKeys(tiles: Tile[][], width: number, height: number, range: {min: 
 }
 
 // Spawn shops
-function spawnShops(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG): void {
+function spawnShops(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG, character?: any): void {
+  // Skip spawning shop tiles for Tourist characters - they get auto-opened shops instead
+  if (character && character.id === 'tourist') {
+    console.log('Tourist character: Skipping shop tile placement (auto-opens shops instead)')
+    return
+  }
+  
   const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
   
   // Only spawn shops on neutral tiles
@@ -571,7 +577,7 @@ function applyFogEffect(tiles: Tile[][], width: number, height: number, rng: ROT
   }
 }
 
-export function generateBoard(config: BoardConfig, playerGold: number = 0, ownedUpgrades: string[] = []): Board {
+export function generateBoard(config: BoardConfig, playerGold: number = 0, ownedUpgrades: string[] = [], character?: any): Board {
   const { width, height, playerTileRatio, opponentTileRatio, seed } = config
   
   // Extract the actual level from the seed (seed = level * 1000 + random)
@@ -690,7 +696,7 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
   spawnWards(tiles, width, height, spawnConfig.wards, rng)
   spawnBlazes(tiles, width, height, spawnConfig.blazes, rng)
   spawnKeys(tiles, width, height, spawnConfig.keys, rng)
-  spawnShops(tiles, width, height, spawnConfig.shops, rng)
+  spawnShops(tiles, width, height, spawnConfig.shops, rng, character)
   spawnProtections(tiles, width, height, spawnConfig.protections, rng)
   spawnClues(tiles, width, height, spawnConfig.clues, rng)
   spawnStaffOfFireballs(tiles, width, height, spawnConfig.staffOfFireballs, rng)

@@ -8,7 +8,7 @@ import { RunState, Board, TileContent, getTileAt } from './types'
 import { CharacterManager } from './CharacterManager'
 
 export interface UpgradeChoice {
-  choices: Array<{ id: string, name: string, description: string }>
+  choices: Array<{ id: string, name: string, description: string, blocked?: boolean, blockReason?: string }>
 }
 
 export interface UpgradeResult {
@@ -65,10 +65,13 @@ export class UpgradeManager {
     
     // For repeatable upgrades, add multiple instances; for non-repeatable, only add once
     const isRepeatable = [
-      'attack', 'defense', 'healthy', 'income', 'traders', 'bag', 'resting'
+      'attack', 'defense', 'healthy', 'income', 'traders', 'bag', 'resting', 'meditation'
     ].includes(upgradeId)
     
-    if (isRepeatable || !run.upgrades.includes(upgradeId)) {
+    // Special case: Below character can take Left Hand and Right Hand repeatedly
+    const isRepeatableForCharacter = (run.character?.id === 'below' && (upgradeId === 'left-hand' || upgradeId === 'right-hand'))
+    
+    if (isRepeatable || isRepeatableForCharacter || !run.upgrades.includes(upgradeId)) {
       run.upgrades = [...run.upgrades, upgradeId]
     } else {
       // Non-repeatable upgrade already owned, don't add again
@@ -221,15 +224,62 @@ export class UpgradeManager {
   /**
    * Generate upgrade choices for the player
    * @param currentUpgrades Currently owned upgrades
+   * @param currentRun Current run state (for character trait filtering)
    * @returns Upgrade choice result
    */
-  async generateUpgradeChoices(currentUpgrades: string[]): Promise<UpgradeChoiceResult> {
+  async generateUpgradeChoices(currentUpgrades: string[], currentRun?: RunState): Promise<UpgradeChoiceResult> {
     try {
       const { getAvailableUpgrades } = await import('./upgrades')
       
-      const availableUpgrades = getAvailableUpgrades(currentUpgrades)
+      let allUpgrades = getAvailableUpgrades(currentUpgrades)
+      let availableUpgrades = []
+      let blockedUpgrades = []
       
-      if (availableUpgrades.length === 0) {
+      // Separate available and blocked upgrades instead of filtering them out completely
+      if (currentRun?.character) {
+        for (const upgrade of allUpgrades) {
+          let blocked = false
+          let blockReason = ''
+          
+          // Check if upgrade is blocked by character traits
+          if (this.characterManager.getTraitManager().isUpgradeBlocked(currentRun.character!, upgrade.id)) {
+            blocked = true
+            blockReason = `${currentRun.character.name} cannot take ${upgrade.name}`
+          }
+          
+          // Check if upgrade count limit is reached
+          const currentCount = currentUpgrades.filter(id => id === upgrade.id).length
+          if (!blocked && this.characterManager.getTraitManager().isUpgradeLimitReached(currentRun.character!, upgrade.id, currentCount)) {
+            blocked = true
+            blockReason = `${upgrade.name} limit reached for ${currentRun.character.name}`
+          }
+          
+          // Special case: Below character can take Left Hand and Right Hand upgrades repeatedly
+          if (!blocked && currentRun.character.id === 'below' && (upgrade.id === 'left-hand' || upgrade.id === 'right-hand')) {
+            availableUpgrades.push(upgrade) // Always available for Below
+            continue
+          }
+          
+          // Normal repeatability check
+          if (!blocked && !upgrade.repeatable && currentUpgrades.includes(upgrade.id)) {
+            blocked = true
+            blockReason = `${upgrade.name} can only be taken once`
+          }
+          
+          if (blocked) {
+            blockedUpgrades.push({ upgrade, blockReason })
+          } else {
+            availableUpgrades.push(upgrade)
+          }
+        }
+      } else {
+        // No character, all upgrades are available
+        availableUpgrades = allUpgrades
+      }
+      
+      // Ensure we have at least some choices (even if blocked)
+      const totalUpgrades = availableUpgrades.length + blockedUpgrades.length
+      if (totalUpgrades === 0) {
         return {
           upgradeChoice: null,
           success: false,
@@ -237,15 +287,63 @@ export class UpgradeManager {
         }
       }
       
-      // Select up to 3 random upgrades
-      const maxChoices = Math.min(3, availableUpgrades.length)
-      const shuffled = [...availableUpgrades].sort(() => Math.random() - 0.5)
-      const choices = shuffled.slice(0, maxChoices)
+      // Select up to 3 upgrades, prioritizing available ones but including blocked ones if needed
+      let selectedUpgrades = []
+      let selectedBlocked = []
+      
+      // First, shuffle and take available upgrades
+      const shuffledAvailable = [...availableUpgrades].sort(() => Math.random() - 0.5)
+      const shuffledBlocked = [...blockedUpgrades].sort(() => Math.random() - 0.5)
+      
+      const maxChoices = 3
+      let choicesMade = 0
+      
+      // Fill with available upgrades first
+      while (choicesMade < maxChoices && selectedUpgrades.length < shuffledAvailable.length) {
+        selectedUpgrades.push(shuffledAvailable[selectedUpgrades.length])
+        choicesMade++
+      }
+      
+      // If we still need more choices and have blocked upgrades, include some blocked ones
+      while (choicesMade < maxChoices && selectedBlocked.length < shuffledBlocked.length) {
+        selectedBlocked.push(shuffledBlocked[selectedBlocked.length])
+        choicesMade++
+      }
+      
+      // Convert to choice format with character-specific descriptions
+      const choices = []
+      
+      // Add available upgrades
+      for (const upgrade of selectedUpgrades) {
+        choices.push({
+          id: upgrade.id,
+          name: upgrade.name,
+          description: currentRun?.character 
+            ? this.characterManager.getCharacterUpgradeDescription(currentRun.character, upgrade)
+            : upgrade.description,
+          icon: upgrade.icon,
+          blocked: false
+        })
+      }
+      
+      // Add blocked upgrades
+      for (const { upgrade, blockReason } of selectedBlocked) {
+        choices.push({
+          id: upgrade.id,
+          name: upgrade.name,
+          description: currentRun?.character 
+            ? this.characterManager.getCharacterUpgradeDescription(currentRun.character, upgrade)
+            : upgrade.description,
+          icon: upgrade.icon,
+          blocked: true,
+          blockReason
+        })
+      }
       
       return {
         upgradeChoice: { choices },
         success: true,
-        message: `Generated ${choices.length} upgrade choices`
+        message: `Generated ${choices.length} upgrade choices (${selectedUpgrades.length} available, ${selectedBlocked.length} blocked)`
       }
     } catch (error) {
       console.error('Error generating upgrade choices:', error)

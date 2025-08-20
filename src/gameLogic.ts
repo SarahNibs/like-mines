@@ -2,8 +2,9 @@ import { Board, Tile, TileOwner, TileContent, GameState, RunState, getTileAt, ge
 import { PROTECTION } from './items'
 import { generateClue } from './clues'
 import { generateBoard, getBoardConfigForLevel } from './boardGenerator'
-import { ALL_CHARACTERS } from './characters'
+import { ALL_CHARACTERS, Character } from './characters'
 import { ALL_SPELLS } from './SpellManager'
+import { CharacterTraitManager } from './CharacterTraits'
 
 // Get adjacent tile positions (8-directional)
 function getAdjacentPositions(x: number, y: number): Array<{x: number, y: number}> {
@@ -30,9 +31,9 @@ export function countAdjacentTiles(board: Board, x: number, y: number, ownerType
 }
 
 // Create board for current level
-export function createBoardForLevel(level: number, playerGold: number = 0, ownedUpgrades: string[] = []): Board {
+export function createBoardForLevel(level: number, playerGold: number = 0, ownedUpgrades: string[] = [], character?: Character): Board {
   const config = getBoardConfigForLevel(level)
-  return generateBoard(config, playerGold, ownedUpgrades)
+  return generateBoard(config, playerGold, ownedUpgrades, character)
 }
 
 // Reveal a tile and update board state
@@ -210,7 +211,7 @@ export function progressToNextLevel(currentState: GameState): GameState {
     }
   }
   
-  const newBoard = createBoardForLevel(newLevel, currentState.run.gold, currentState.run.upgrades)
+  const newBoard = createBoardForLevel(newLevel, currentState.run.gold, currentState.run.upgrades, currentState.run.character)
   
   // Apply WISDOM upgrade: add detector scan to random tile
   if (currentState.run.upgrades.includes('wisdom')) {
@@ -252,6 +253,30 @@ export function progressToNextLevel(currentState: GameState): GameState {
   
   const initialClue = generateClue(newBoard, currentState.run.upgrades)
   
+  // Check if character should gain new spell at this level (Wizard trait)
+  let updatedRun = {
+    ...currentState.run,
+    currentLevel: newLevel,
+    // Mana regeneration: +1 mana per level (up to max)
+    mana: Math.min(currentState.run.maxMana, currentState.run.mana + 1)
+  }
+  
+  if (updatedRun.character) {
+    const traitManager = new CharacterTraitManager()
+    if (traitManager.shouldGainSpellAtLevel(updatedRun.character, newLevel)) {
+      // Gain a random spell
+      const availableSpells = ALL_SPELLS.filter(spell => 
+        !updatedRun.spells.some(ownedSpell => ownedSpell.id === spell.id)
+      )
+      
+      if (availableSpells.length > 0) {
+        const randomSpell = availableSpells[Math.floor(Math.random() * availableSpells.length)]
+        updatedRun.spells = [...updatedRun.spells, randomSpell]
+        console.log(`${updatedRun.character.name} gained new spell at level ${newLevel}: ${randomSpell.name}`)
+      }
+    }
+  }
+  
   return {
     ...currentState,
     board: newBoard,
@@ -263,12 +288,7 @@ export function progressToNextLevel(currentState: GameState): GameState {
     keyMode: false, // Reset key mode for new board
     shopOpen: false, // Close shop for new board
     shopItems: [], // Clear shop items for new board
-    run: {
-      ...currentState.run,
-      currentLevel: newLevel,
-      // Mana regeneration: +1 mana per level (up to max)
-      mana: Math.min(currentState.run.maxMana, currentState.run.mana + 1)
-    }
+    run: updatedRun
   }
 }
 
@@ -280,10 +300,25 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
   const maxRounds = 1000 // Safety check to prevent infinite loops
   
   // Apply temporary buffs
-  const effectiveAttack = runState.attack + (runState.temporaryBuffs.blaze || 0)
-  const effectiveDefense = runState.defense + (runState.temporaryBuffs.ward || 0)
+  let blazeBonus = runState.temporaryBuffs.blaze || 0
+  let wardBonus = runState.temporaryBuffs.ward || 0
+  
+  // Apply character trait bonuses to temporary buffs
+  if (runState.character) {
+    const traitManager = new CharacterTraitManager()
+    blazeBonus += traitManager.getItemEffectBonus(runState.character, 'blaze')
+    wardBonus += traitManager.getItemEffectBonus(runState.character, 'ward')
+  }
+  
+  const effectiveAttack = runState.attack + blazeBonus
+  const effectiveDefense = runState.defense + wardBonus
   
   console.log(`Combat: Player (${effectiveAttack} atk, ${effectiveDefense} def) vs ${monster.name} (${monster.attack} atk, ${monster.defense} def, ${monster.hp} hp)`)
+  
+  // Check if character attacks first (Ranger trait)
+  const traitManager = new CharacterTraitManager()
+  const attacksFirst = runState.character && traitManager.doesCharacterAttackFirst(runState.character)
+  const preventDamageOnKill = runState.character && traitManager.doesCharacterPreventDamageOnKill(runState.character)
   
   while (monsterHp > 0 && rounds < maxRounds) {
     // Calculate damage without minimums
@@ -297,11 +332,27 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
       return Math.max(0, runState.hp - 1)
     }
     
-    // Monster attacks first
-    totalDamageToPlayer += damageToPlayer
-    
-    // Player attacks back
-    monsterHp -= damageToMonster
+    if (attacksFirst) {
+      // Ranger attacks first
+      monsterHp -= damageToMonster
+      
+      // If monster dies and Ranger has damage prevention, take no damage this round
+      if (monsterHp <= 0 && preventDamageOnKill) {
+        console.log('Ranger killed monster before taking damage!')
+        break // Exit without taking damage
+      }
+      
+      // Monster attacks back if still alive
+      if (monsterHp > 0) {
+        totalDamageToPlayer += damageToPlayer
+      }
+    } else {
+      // Standard combat: Monster attacks first
+      totalDamageToPlayer += damageToPlayer
+      
+      // Player attacks back
+      monsterHp -= damageToMonster
+    }
     
     rounds++
     
@@ -418,8 +469,14 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       return 'Gained 4 gold from treasure chest!'
       
     case 'health-potion':
-      runState.hp = Math.min(runState.maxHp, runState.hp + 8)
-      return 'Used Health Potion! Gained 8 HP.'
+      let hpGain = 8
+      // Apply Cleric HP gain bonus
+      if (runState.character) {
+        const traitManager = new CharacterTraitManager()
+        hpGain += traitManager.getHpGainBonus(runState.character, 'healthPotion')
+      }
+      runState.hp = Math.min(runState.maxHp, runState.hp + hpGain)
+      return `Used Health Potion! Gained ${hpGain} HP.`
       
     case 'mana-potion':
       runState.mana = Math.min(runState.maxMana, runState.mana + 3)
