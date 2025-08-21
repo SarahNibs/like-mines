@@ -47,6 +47,40 @@ export function revealTile(board: Board, x: number, y: number, revealedBy: TileO
   tile.revealed = true
   tile.revealedBy = revealedBy
   
+  // Clear annotations when tile is revealed
+  tile.annotated = 'none'
+  
+  // Handle chain cleanup when this tile is revealed
+  if (tile.chainData) {
+    // If this tile was a "key" tile (not blocked), find and unlock any tiles locked by it
+    if (!tile.chainData.isBlocked) {
+      const requiredTileX = tile.chainData.requiredTileX
+      const requiredTileY = tile.chainData.requiredTileY
+      const lockedTile = getTileAt(board, requiredTileX, requiredTileY)
+      
+      // Unlock the dependent tile
+      if (lockedTile && lockedTile.chainData && lockedTile.chainData.isBlocked) {
+        console.log(`Unlocking tile at (${requiredTileX}, ${requiredTileY}) because key tile at (${x}, ${y}) was revealed`)
+        lockedTile.chainData = undefined
+      }
+      
+      // Handle secondary chains for 3-tile setups (B unlocks C when A unlocks B)
+      if (tile.chainData.hasSecondaryKey) {
+        const secondaryRequiredTileX = tile.chainData.secondaryRequiredTileX!
+        const secondaryRequiredTileY = tile.chainData.secondaryRequiredTileY!
+        const secondaryLockedTile = getTileAt(board, secondaryRequiredTileX, secondaryRequiredTileY)
+        
+        if (secondaryLockedTile && secondaryLockedTile.chainData && secondaryLockedTile.chainData.isBlocked) {
+          console.log(`Unlocking secondary tile at (${secondaryRequiredTileX}, ${secondaryRequiredTileY}) because key tile at (${x}, ${y}) was revealed`)
+          secondaryLockedTile.chainData = undefined
+        }
+      }
+    }
+    
+    // Clear chain data from the revealed tile
+    tile.chainData = undefined
+  }
+  
   // Update counters
   if (tile.owner === TileOwner.Player) {
     board.playerTilesRevealed++
@@ -174,7 +208,8 @@ export function createInitialGameState(): GameState {
     ringMode: false,
     spellTargetMode: false,
     shopOpen: false,
-    shopItems: []
+    shopItems: [],
+    annotationSet: 'set1' // Start with the original annotation set
   }
 }
 
@@ -242,7 +277,9 @@ export function progressToNextLevel(currentState: GameState): GameState {
     ...currentState.run,
     currentLevel: newLevel,
     // Mana regeneration: +1 mana per level (up to max) + Wellspring bonus
-    mana: Math.min(currentState.run.maxMana, currentState.run.mana + totalManaGain)
+    mana: Math.min(currentState.run.maxMana, currentState.run.mana + totalManaGain),
+    // Clear spell effects when advancing to new level (they're tied to specific tile coordinates)
+    spellEffects: []
   }
   
   if (updatedRun.character) {
@@ -287,6 +324,7 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
   let totalDamageToPlayer = 0
   let rounds = 0
   const maxRounds = 1000 // Safety check to prevent infinite loops
+  let monsterActuallyAttacked = false // Track if monster got to attack
   
   // Apply temporary buffs (these already include character trait bonuses when applied)
   let blazeBonus = runState.temporaryBuffs.blaze || 0
@@ -327,10 +365,12 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
       // Monster attacks back if still alive
       if (monsterHp > 0) {
         totalDamageToPlayer += damageToPlayer
+        monsterActuallyAttacked = true
       }
     } else {
       // Standard combat: Monster attacks first
       totalDamageToPlayer += damageToPlayer
+      monsterActuallyAttacked = true
       
       // Player attacks back
       monsterHp -= damageToMonster
@@ -349,12 +389,16 @@ export function fightMonster(monster: MonsterData, runState: RunState): number {
   
   console.log(`Combat ended after ${rounds} rounds. Total damage to player: ${totalDamageToPlayer}`)
   
-  // Clear temporary buffs after combat and remove from upgrades display
-  if (runState.temporaryBuffs.ward) {
+  // Only clear Ward buffs if monster actually got to attack
+  if (runState.temporaryBuffs.ward && monsterActuallyAttacked) {
     delete runState.temporaryBuffs.ward
     runState.upgrades = runState.upgrades.filter(id => id !== 'ward-temp')
     console.log('Ward effect consumed.')
+  } else if (runState.temporaryBuffs.ward) {
+    console.log('Ward effect persists - monster never attacked!')
   }
+  
+  // Always clear Blaze buffs after combat (offensive boost is consumed regardless)
   if (runState.temporaryBuffs.blaze) {
     delete runState.temporaryBuffs.blaze
     runState.upgrades = runState.upgrades.filter(id => id !== 'blaze-temp')
@@ -474,8 +518,9 @@ export function applyItemEffect(runState: RunState, item: ItemData): string {
       return `Used Health Potion! Gained ${hpGain} HP.`
       
     case 'mana-potion':
-      runState.mana = Math.min(runState.maxMana, runState.mana + 3)
-      return 'Used Mana Potion! Gained 3 mana.'
+      const manaGain = Math.ceil(runState.maxMana / 2) + 1
+      runState.mana = Math.min(runState.maxMana, runState.mana + manaGain)
+      return `Used Mana Potion! Gained ${manaGain} mana.`
       
     case 'crystal-ball':
       // This shouldn't be called since crystal ball is not immediate anymore

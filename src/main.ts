@@ -55,6 +55,7 @@ const upgradeChoice2Btn = document.getElementById('upgrade-choice-2')!
 const trophiesContainer = document.getElementById('trophies-container')!
 const characterSelectOverlay = document.getElementById('character-select-overlay')!
 const characterChoicesEl = document.getElementById('character-choices')!
+const annotationToggleBtn = document.getElementById('annotation-toggle')!
 
 
 // Update UI with current game state
@@ -153,14 +154,15 @@ function updateUI() {
     winStatusEl.textContent = '🏆 Victory!'
     winStatusEl.style.color = '#ffa500'
     
-    // Calculate trophy summary
-    const totalTrophiesEarned = state.run.trophies.length
-    const stolenTrophies = state.run.trophies.filter(t => t.stolen).length
-    const keptTrophies = totalTrophiesEarned - stolenTrophies
+    // Calculate trophy summary (only count gold trophies)
+    const goldTrophies = state.run.trophies.filter(t => t.type === 'gold')
+    const totalGoldTrophiesEarned = goldTrophies.length
+    const stolenGoldTrophies = goldTrophies.filter(t => t.stolen).length
+    const keptGoldTrophies = totalGoldTrophiesEarned - stolenGoldTrophies
     
-    let summaryText = `🏆 Victory!\n\nYou gained ${totalTrophiesEarned} trophies!`
-    if (stolenTrophies > 0) {
-      summaryText += ` (And kept ${keptTrophies} of them)`
+    let summaryText = `🏆 Victory!\n\nYou gained ${totalGoldTrophiesEarned} gold trophies!`
+    if (stolenGoldTrophies > 0) {
+      summaryText += ` (And kept ${keptGoldTrophies} of them)`
     }
     
     overlayMessage.innerHTML = summaryText.replace(/\n/g, '<br>')
@@ -244,6 +246,9 @@ function updateUI() {
   
   // Update trophies
   updateTrophies(state, trophiesContainer)
+  
+  // Update annotation toggle button text
+  annotationToggleBtn.textContent = state.annotationSet === 'set1' ? 'Set 1 Annotations' : 'Set 2 Annotations'
   
   // Update clues only when necessary
   // Calculate annotation hash for hash detection (include both position and type)

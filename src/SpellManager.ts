@@ -230,12 +230,27 @@ export class SpellManager {
     // Pick a random locked door
     const randomDoor = lockedDoors[Math.floor(Math.random() * lockedDoors.length)]
     
-    // Unlock the door by removing the chain relationship completely (like Key item)
-    // Remove chain data from both the door tile and the key tile
-    randomDoor.tile.chainData = undefined
+    // Unlock the door by removing the chain relationship (like Key item)
+    // Handle 3-tile chains specially to preserve A->B relationship
     if (randomDoor.requiredTile.chainData) {
-      randomDoor.requiredTile.chainData = undefined
+      // Check if this is part of a 3-tile chain (keyTile has secondary chain properties)  
+      if (randomDoor.requiredTile.chainData.hasSecondaryKey) {
+        // This is a 3-tile chain: A -> B (requiredTile) -> C (door tile)
+        // Only remove B's secondary chain properties, keep A -> B relationship intact
+        console.log(`Unlock spell partially unlocking 3-tile chain: keeping A->B, removing B->C`)
+        randomDoor.requiredTile.chainData = {
+          chainId: randomDoor.requiredTile.chainData.chainId,
+          isBlocked: randomDoor.requiredTile.chainData.isBlocked,
+          requiredTileX: randomDoor.requiredTile.chainData.requiredTileX,
+          requiredTileY: randomDoor.requiredTile.chainData.requiredTileY
+          // Remove hasSecondaryKey and secondary properties
+        }
+      } else {
+        // This is a simple 2-tile chain, remove the key tile's chain data completely
+        randomDoor.requiredTile.chainData = undefined
+      }
     }
+    randomDoor.tile.chainData = undefined
     
     return {
       success: true,

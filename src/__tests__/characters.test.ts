@@ -73,7 +73,7 @@ describe('characters', () => {
     it('should have valid starting upgrade IDs', () => {
       const validUpgradeIds = [
         'attack', 'defense', 'healthy', 'income', 'bag', 'quick', 
-        'rich', 'wisdom', 'traders', 'left-hand', 'right-hand', 'resting'
+        'rich', 'wisdom', 'traders', 'left-hand', 'right-hand', 'resting', 'wellspring'
       ]
 
       ALL_CHARACTERS.forEach(char => {

@@ -2,7 +2,7 @@
  * Tests for SpellManager - spell definitions and casting logic
  */
 
-import { SpellManager, ALL_SPELLS, MAGIC_MISSILE, MAGE_HAND, STINKING_CLOUD, GLIMPSE } from '../SpellManager'
+import { SpellManager, ALL_SPELLS, MAGIC_MISSILE, MAGE_HAND, STINKING_CLOUD, GLIMPSE, UNLOCK, WINDSTORM } from '../SpellManager'
 import { RunState, SpellData, SpellEffect, GameState, Board } from '../types'
 import { createInitialRunState } from '../gameLogic'
 
@@ -51,11 +51,13 @@ describe('SpellManager', () => {
 
   describe('spell definitions', () => {
     it('should have all required spells defined', () => {
-      expect(ALL_SPELLS).toHaveLength(4)
+      expect(ALL_SPELLS).toHaveLength(6)
       expect(ALL_SPELLS).toContain(MAGIC_MISSILE)
       expect(ALL_SPELLS).toContain(MAGE_HAND)
       expect(ALL_SPELLS).toContain(STINKING_CLOUD)
       expect(ALL_SPELLS).toContain(GLIMPSE)
+      expect(ALL_SPELLS).toContain(UNLOCK)
+      expect(ALL_SPELLS).toContain(WINDSTORM)
     })
 
     it('should have valid spell structure', () => {

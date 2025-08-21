@@ -67,8 +67,8 @@ export class GameFlowManager {
   handleBoardWon(currentState: GameState): GameFlowResult {
     console.log('Board won! Preparing for next level...')
     
-    // If shop is open, don't auto-progress - wait for shop to close
-    if (currentState.shopOpen) {
+    // If shop is open or upgrade choice is pending, don't auto-progress
+    if (currentState.shopOpen || currentState.upgradeChoice) {
       return {
         newState: {
           boardStatus: 'won'
@@ -134,7 +134,7 @@ export class GameFlowManager {
 
   // Handle shop closure when board was won
   handleShopClosedAfterWin(currentState: GameState): GameFlowResult {
-    if (currentState.boardStatus === 'won' && !currentState.shopOpen) {
+    if (currentState.boardStatus === 'won' && !currentState.shopOpen && !currentState.upgradeChoice) {
       console.log('Shop closed and board was won - triggering progression')
       return this.handleBoardWon(currentState)
     }

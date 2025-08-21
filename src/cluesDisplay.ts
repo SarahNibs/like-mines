@@ -8,6 +8,84 @@ import { setHoverTiles, updateHoverHighlights } from './hoverHighlights'
 // Track scroll position to preserve it across updates
 let savedClueScrollTop = 0
 
+// Add annotation to clue tile element based on annotation type
+function addAnnotationToClueElement(tileEl: HTMLElement, annotationType: string) {
+  if (annotationType === 'none') {
+    return // No annotation to add
+  }
+
+  switch (annotationType) {
+    case 'slash':
+      // Gray slash (bottom-left to top-right) - "not player's"
+      const graySlash = createSlashElement('#999')
+      tileEl.appendChild(graySlash)
+      break
+
+    case 'dog-ear':
+      // Light green dog-ear - "player's"
+      const greenDogEar = createDogEarElement('#90ee90')
+      tileEl.appendChild(greenDogEar)
+      break
+
+    case 'opponent-slash':
+      // Red slash (bottom-left to top-right) - "opponent's"
+      const redSlash = createSlashElement('#ff6666')
+      tileEl.appendChild(redSlash)
+      break
+
+    case 'neutral-slash':
+      // Pure white slash (bottom-left to top-right) - "neutral"
+      const whiteSlash = createSlashElement('#ffffff')
+      tileEl.appendChild(whiteSlash)
+      break
+
+    case 'not-opponent-dog-ear':
+      // Gray dog-ear - "not opponent's"
+      const grayDogEar = createDogEarElement('#999999')
+      tileEl.appendChild(grayDogEar)
+      break
+  }
+}
+
+// Create a slash element for annotations
+function createSlashElement(color: string): HTMLElement {
+  const slash = document.createElement('div')
+  slash.style.position = 'absolute'
+  slash.style.top = '0'
+  slash.style.left = '0'
+  slash.style.width = '100%'
+  slash.style.height = '100%'
+  slash.style.pointerEvents = 'none'
+  
+  // Create the actual slash line
+  const slashLine = document.createElement('div')
+  slashLine.style.position = 'absolute'
+  slashLine.style.top = '50%'
+  slashLine.style.left = '10%'
+  slashLine.style.width = '80%'
+  slashLine.style.height = '1px'
+  slashLine.style.background = color
+  slashLine.style.transform = 'translateY(-50%) rotate(-45deg)' // Bottom-left to top-right
+  slashLine.style.transformOrigin = 'center'
+  
+  slash.appendChild(slashLine)
+  return slash
+}
+
+// Create a dog-ear element for annotations
+function createDogEarElement(color: string): HTMLElement {
+  const dogEar = document.createElement('div')
+  dogEar.style.position = 'absolute'
+  dogEar.style.top = '1px'
+  dogEar.style.right = '1px'
+  dogEar.style.width = '6px'
+  dogEar.style.height = '6px'
+  dogEar.style.backgroundColor = color
+  dogEar.style.borderRadius = '0 0 0 50%'
+  dogEar.style.pointerEvents = 'none'
+  return dogEar
+}
+
 // Update clue display
 export function updateClues(
   state: any,
@@ -124,41 +202,7 @@ function createClueTileElement(
   tileEl.style.position = 'relative'
   
   // Show annotation if tile is annotated (matching board tile state)
-  if (boardTile.annotated === 'slash') {
-    const slash = document.createElement('div')
-    slash.style.position = 'absolute'
-    slash.style.top = '0'
-    slash.style.left = '0'
-    slash.style.width = '100%'
-    slash.style.height = '100%'
-    slash.style.pointerEvents = 'none'
-    
-    // Create the actual slash line
-    const slashLine = document.createElement('div')
-    slashLine.style.position = 'absolute'
-    slashLine.style.top = '50%'
-    slashLine.style.left = '10%'
-    slashLine.style.width = '80%'
-    slashLine.style.height = '1px'
-    slashLine.style.background = '#999'
-    slashLine.style.transform = 'translateY(-50%) rotate(-45deg)' // Bottom-left to top-right
-    slashLine.style.transformOrigin = 'center'
-    
-    slash.appendChild(slashLine)
-    tileEl.appendChild(slash)
-  } else if (boardTile.annotated === 'dog-ear') {
-    const dogEar = document.createElement('div')
-    dogEar.style.position = 'absolute'
-    dogEar.style.top = '1px'
-    dogEar.style.right = '1px'
-    dogEar.style.width = '6px'
-    dogEar.style.height = '6px'
-    dogEar.style.backgroundColor = '#90ee90'
-    dogEar.style.borderRadius = '0 0 0 50%'
-    dogEar.style.pointerEvents = 'none'
-    
-    tileEl.appendChild(dogEar)
-  }
+  addAnnotationToClueElement(tileEl, boardTile.annotated)
   
   // Get the tiles for the hand this tile belongs to
   const handTiles = hand === 'A' ? clue.handA.tiles : clue.handB.tiles

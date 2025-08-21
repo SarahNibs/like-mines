@@ -101,7 +101,7 @@ export interface Tile {
   content: TileContent
   revealed: boolean
   contentVisible: boolean // Whether content is known before reveal
-  annotated: 'none' | 'slash' | 'dog-ear' // Player annotation: none -> gray slash -> light green dog-ear -> none
+  annotated: 'none' | 'slash' | 'dog-ear' | 'opponent-slash' | 'neutral-slash' | 'not-opponent-dog-ear' // Player annotation system
   fogged: boolean // Whether this tile is covered by fog (hides UI until revealed)
   revealedBy?: TileOwner // Who revealed this tile (determines adjacency display)
   itemData?: ItemData // Present if content is Item
@@ -187,6 +187,7 @@ export interface GameState {
   upgradeChoice?: {
     choices: UpgradeData[]
   } | null // Pending upgrade choice selection
+  annotationSet: 'set1' | 'set2' // Controls which annotation set is active (set1: none->slash->dog-ear, set2: none->not-opponent-dog-ear->opponent-slash->neutral-slash)
 }
 
 // Helper function to get tile at position

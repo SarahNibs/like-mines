@@ -18,6 +18,7 @@ export interface SpawnConfig {
   monsters: { min: number; max: number }
   goldCoins: { min: number; max: number }
   firstAid: { min: number; max: number }
+  manaPotions: { min: number; max: number }
   crystalBalls: { min: number; max: number }
   detectors: { min: number; max: number }
   transmutes: { min: number; max: number }
@@ -41,6 +42,7 @@ function getSpawnConfigForLevel(level: number): SpawnConfig {
     monsters: spec.monsters,
     goldCoins: spec.goldCoins,
     firstAid: spec.firstAid,
+    manaPotions: spec.manaPotions,
     crystalBalls: spec.crystalBalls,
     detectors: spec.detectors,
     transmutes: spec.transmutes,
@@ -382,6 +384,17 @@ function spawnHealthPotions(tiles: Tile[][], width: number, height: number, rang
   }
 }
 
+// Spawn mana potions
+function spawnManaPotions(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG): void {
+  const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
+  const emptyTiles = getEmptyTiles(tiles, width, height)
+  const manaPotion = ALL_ITEMS.find(i => i.id === 'mana-potion')!
+  
+  for (let i = 0; i < count && emptyTiles.length > 0; i++) {
+    placeOnRandomEmptyTile(tiles, emptyTiles, rng, TileContent.Item, manaPotion)
+  }
+}
+
 // Spawn crystal balls
 function spawnCrystalBalls(tiles: Tile[][], width: number, height: number, range: {min: number, max: number}, rng: ROT.RNG): void {
   const count = Math.floor(rng.getUniform() * (range.max - range.min + 1)) + range.min
@@ -697,6 +710,7 @@ export function generateBoard(config: BoardConfig, playerGold: number = 0, owned
   spawnMonsters(tiles, width, height, spawnConfig.monsters, rng, actualLevel)
   spawnGoldCoins(tiles, width, height, spawnConfig.goldCoins, rng)
   spawnHealthPotions(tiles, width, height, spawnConfig.firstAid, rng, playerGold)
+  spawnManaPotions(tiles, width, height, spawnConfig.manaPotions, rng)
   spawnCrystalBalls(tiles, width, height, spawnConfig.crystalBalls, rng)
   spawnDetectors(tiles, width, height, spawnConfig.detectors, rng)
   spawnTransmutes(tiles, width, height, spawnConfig.transmutes, rng)

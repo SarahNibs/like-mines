@@ -18,6 +18,12 @@ export function setupButtonHandlers(gameStore: any, clearUpgradeStateCache: () =
     gameStore.resetGame()
   })
 
+  // Annotation Toggle button handler
+  document.getElementById('annotation-toggle')!.addEventListener('click', () => {
+    console.log('Toggling annotation set...')
+    gameStore.toggleAnnotationSet()
+  })
+
   // Shop widget button handlers
   const shopCloseBtn = document.getElementById('shop-close')!
   shopCloseBtn.addEventListener('click', () => {

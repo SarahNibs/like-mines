@@ -76,7 +76,7 @@ export const CLERIC_TRAIT: TraitEffect = {
     'income': 1 // Cannot pick Income more than once
   },
   upgradeStatBonuses: {
-    // Resting upgrade gets no direct stat bonus but healing per trigger is +3 vs +2 (handled in TurnManager)
+    'resting': { maxHp: 1 } // Resting upgrade provides +1 maxHp bonus (healing per trigger is +3 vs +2 handled in TurnManager)
   },
   hpGainBonuses: {
     healthPotion: 1, // Health Potion gives +9 HP instead of +8

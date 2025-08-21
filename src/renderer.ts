@@ -136,6 +136,69 @@ export class GameRenderer {
     ctx.restore()
   }
 
+  // Draw tile annotation based on type
+  private drawAnnotation(tile: Tile, x: number, y: number): void {
+    if (tile.annotated === 'none') {
+      return // No annotation to draw
+    }
+
+    switch (tile.annotated) {
+      case 'slash':
+        // Gray slash (bottom-left to top-right) - "not player's"
+        this.ctx.strokeStyle = '#999'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        this.ctx.moveTo(x + 5, y + this.tileSize - 5)
+        this.ctx.lineTo(x + this.tileSize - 5, y + 5)
+        this.ctx.stroke()
+        break
+
+      case 'dog-ear':
+        // Light green dog-ear (rounded upper right corner) - "player's"
+        this.ctx.fillStyle = '#90ee90'
+        this.ctx.beginPath()
+        const cornerSize = 20
+        this.ctx.moveTo(x + this.tileSize - cornerSize, y)
+        this.ctx.lineTo(x + this.tileSize, y)
+        this.ctx.lineTo(x + this.tileSize, y + cornerSize)
+        this.ctx.quadraticCurveTo(x + this.tileSize - 2, y + 2, x + this.tileSize - cornerSize, y)
+        this.ctx.fill()
+        break
+
+      case 'opponent-slash':
+        // Red slash (bottom-left to top-right) - "opponent's"
+        this.ctx.strokeStyle = '#ff6666'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        this.ctx.moveTo(x + 5, y + this.tileSize - 5)
+        this.ctx.lineTo(x + this.tileSize - 5, y + 5)
+        this.ctx.stroke()
+        break
+
+      case 'neutral-slash':
+        // Pure white slash (bottom-left to top-right) - "neutral"
+        this.ctx.strokeStyle = '#ffffff'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        this.ctx.moveTo(x + 5, y + this.tileSize - 5)
+        this.ctx.lineTo(x + this.tileSize - 5, y + 5)
+        this.ctx.stroke()
+        break
+
+      case 'not-opponent-dog-ear':
+        // Gray dog-ear (rounded upper right corner) - "not opponent's"
+        this.ctx.fillStyle = '#999999'
+        this.ctx.beginPath()
+        const grayCornerSize = 20
+        this.ctx.moveTo(x + this.tileSize - grayCornerSize, y)
+        this.ctx.lineTo(x + this.tileSize, y)
+        this.ctx.lineTo(x + this.tileSize, y + grayCornerSize)
+        this.ctx.quadraticCurveTo(x + this.tileSize - 2, y + 2, x + this.tileSize - grayCornerSize, y)
+        this.ctx.fill()
+        break
+    }
+  }
+
   // Calculate tile size and centering based on board dimensions and canvas size
   calculateTileSize(board: Board): void {
     const padding = 20
@@ -330,25 +393,7 @@ export class GameRenderer {
       }
       
       // Draw annotations on top of fog (for player quality of life)
-      if (tile.annotated === 'slash') {
-        // Gray slash (bottom-left to top-right)
-        this.ctx.strokeStyle = '#999'
-        this.ctx.lineWidth = 2
-        this.ctx.beginPath()
-        this.ctx.moveTo(x + 5, y + this.tileSize - 5)
-        this.ctx.lineTo(x + this.tileSize - 5, y + 5)
-        this.ctx.stroke()
-      } else if (tile.annotated === 'dog-ear') {
-        // Light green dog-ear (rounded upper right corner)
-        this.ctx.fillStyle = '#90ee90'
-        this.ctx.beginPath()
-        const cornerSize = 20
-        this.ctx.moveTo(x + this.tileSize - cornerSize, y)
-        this.ctx.lineTo(x + this.tileSize, y)
-        this.ctx.lineTo(x + this.tileSize, y + cornerSize)
-        this.ctx.quadraticCurveTo(x + this.tileSize - 2, y + 2, x + this.tileSize - cornerSize, y)
-        this.ctx.fill()
-      }
+      this.drawAnnotation(tile, x, y)
       
       return // Skip all other rendering for fogged tiles
     }
@@ -495,25 +540,7 @@ export class GameRenderer {
       }
       
       // Draw annotation based on state
-      if (tile.annotated === 'slash') {
-        // Gray slash (bottom-left to top-right)
-        this.ctx.strokeStyle = '#999'
-        this.ctx.lineWidth = 2
-        this.ctx.beginPath()
-        this.ctx.moveTo(x + 5, y + this.tileSize - 5)
-        this.ctx.lineTo(x + this.tileSize - 5, y + 5)
-        this.ctx.stroke()
-      } else if (tile.annotated === 'dog-ear') {
-        // Light green dog-ear (rounded upper right corner)
-        this.ctx.fillStyle = '#90ee90'
-        this.ctx.beginPath()
-        const cornerSize = 20
-        this.ctx.moveTo(x + this.tileSize - cornerSize, y)
-        this.ctx.lineTo(x + this.tileSize, y)
-        this.ctx.lineTo(x + this.tileSize, y + cornerSize)
-        this.ctx.quadraticCurveTo(x + this.tileSize - 2, y + 2, x + this.tileSize - cornerSize, y)
-        this.ctx.fill()
-      }
+      this.drawAnnotation(tile, x, y)
     }
     
     // Draw detector scan results if present (overlay that works on both revealed and unrevealed tiles)

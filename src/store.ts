@@ -273,30 +273,71 @@ class GameStore {
     }
   }
 
-  // Toggle tile annotation (3-state cycle: none -> slash -> dog-ear -> none)
+  // Toggle tile annotation based on current annotation set
   toggleAnnotation(x: number, y: number): boolean {
     const tile = getTileAt(this.state.board, x, y)
     if (!tile || tile.revealed) {
       return false
     }
     
-    // Cycle through annotation states
-    switch (tile.annotated) {
-      case 'none':
-        tile.annotated = 'slash'
-        break
-      case 'slash':
-        tile.annotated = 'dog-ear'
-        break
-      case 'dog-ear':
-        tile.annotated = 'none'
-        break
+    const currentSet = this.state.annotationSet
+    
+    // Set 1: none -> slash -> dog-ear -> none
+    // Set 2: none -> not-opponent-dog-ear -> opponent-slash -> neutral-slash -> none
+    
+    if (currentSet === 'set1') {
+      // Original annotation set
+      switch (tile.annotated) {
+        case 'none':
+          tile.annotated = 'slash'
+          break
+        case 'slash':
+          tile.annotated = 'dog-ear'
+          break
+        case 'dog-ear':
+          tile.annotated = 'none'
+          break
+        default:
+          // If tile has annotation not in this set, go to blank first
+          tile.annotated = 'none'
+          break
+      }
+    } else {
+      // Set 2: New annotation set
+      switch (tile.annotated) {
+        case 'none':
+          tile.annotated = 'not-opponent-dog-ear'
+          break
+        case 'not-opponent-dog-ear':
+          tile.annotated = 'opponent-slash'
+          break
+        case 'opponent-slash':
+          tile.annotated = 'neutral-slash'
+          break
+        case 'neutral-slash':
+          tile.annotated = 'none'
+          break
+        default:
+          // If tile has annotation not in this set, go to blank first
+          tile.annotated = 'none'
+          break
+      }
     }
     
     this.setState({
       board: { ...this.state.board }
     })
     return true
+  }
+
+  // Toggle between annotation sets
+  toggleAnnotationSet(): void {
+    const newSet = this.state.annotationSet === 'set1' ? 'set2' : 'set1'
+    console.log(`Switching annotation set from ${this.state.annotationSet} to ${newSet}`)
+    
+    this.setState({
+      annotationSet: newSet
+    })
   }
 
 
@@ -927,14 +968,28 @@ class GameStore {
     const itemIndex = (this.state as any).keyItemIndex
     removeItemFromInventory(this.state.run, itemIndex)
     
-    // Find and remove the corresponding key tile
+    // Find and handle the corresponding key tile
     const requiredTileX = tile.chainData.requiredTileX
     const requiredTileY = tile.chainData.requiredTileY
     const keyTile = getTileAt(this.state.board, requiredTileX, requiredTileY)
     
     if (keyTile && keyTile.chainData) {
-      // Remove chain data from both tiles
-      keyTile.chainData = undefined
+      // Check if this is part of a 3-tile chain (keyTile has secondary chain properties)
+      if (keyTile.chainData.hasSecondaryKey) {
+        // This is a 3-tile chain: A -> B (keyTile) -> C (tile)
+        // Only remove B's secondary chain properties, keep A -> B relationship intact
+        console.log(`Partially unlocking 3-tile chain: keeping A->B, removing B->C`)
+        keyTile.chainData = {
+          chainId: keyTile.chainData.chainId,
+          isBlocked: keyTile.chainData.isBlocked,
+          requiredTileX: keyTile.chainData.requiredTileX,
+          requiredTileY: keyTile.chainData.requiredTileY
+          // Remove hasSecondaryKey and secondary properties
+        }
+      } else {
+        // This is a simple 2-tile chain, remove the key tile's chain data completely
+        keyTile.chainData = undefined
+      }
     }
     tile.chainData = undefined
     
@@ -1290,20 +1345,33 @@ class GameStore {
     
     this.applyUpgrade(chosenUpgrade.id)
     
-    // Check if we need to trigger AI turn after choosing upgrade
-    const shouldTriggerAI = this.state.currentTurn === 'opponent' && 
-                           this.state.gameStatus === 'playing' && 
-                           this.state.boardStatus === 'in-progress'
-    
-    // Clear the upgrade choice widget and pending flag
+    // Clear the upgrade choice widget and pending flag first
     this.pendingUpgradeChoice = false
     this.setState({
       upgradeChoice: null
     })
     
-    // Now trigger AI turn if needed
-    if (shouldTriggerAI) {
-      this.scheduleAITurn()
+    // Check if board was won and we can now progress to next level
+    if (this.state.boardStatus === 'won') {
+      console.log('Upgrade choice completed and board was won - triggering progression')
+      // Use the flow manager to handle the shop closed after win logic
+      const flowResult = this.gameFlowManager.handleShopClosedAfterWin(this.state)
+      if (flowResult.nextBoardDelay) {
+        setTimeout(() => {
+          const progressResult = this.gameFlowManager.progressToNextBoard(this.state)
+          this.setState(progressResult.newState)
+        }, flowResult.nextBoardDelay)
+      }
+    } else {
+      // Check if we need to trigger AI turn after choosing upgrade
+      const shouldTriggerAI = this.state.currentTurn === 'opponent' && 
+                             this.state.gameStatus === 'playing' && 
+                             this.state.boardStatus === 'in-progress'
+      
+      // Now trigger AI turn if needed
+      if (shouldTriggerAI) {
+        this.scheduleAITurn()
+      }
     }
     
     console.log(`Chose ${chosenUpgrade.name} upgrade!`)
@@ -1312,6 +1380,18 @@ class GameStore {
   // Cancel upgrade choice (shouldn't normally happen, but for safety)
   cancelUpgradeChoice(): void {
     this.setState({ upgradeChoice: null })
+    
+    // Check if board was won and we can now progress to next level
+    if (this.state.boardStatus === 'won') {
+      console.log('Upgrade choice cancelled and board was won - triggering progression')
+      const flowResult = this.gameFlowManager.handleShopClosedAfterWin(this.state)
+      if (flowResult.nextBoardDelay) {
+        setTimeout(() => {
+          const progressResult = this.gameFlowManager.progressToNextBoard(this.state)
+          this.setState(progressResult.newState)
+        }, flowResult.nextBoardDelay)
+      }
+    }
   }
 
   // Discard item from inventory (legacy method for direct discard)
